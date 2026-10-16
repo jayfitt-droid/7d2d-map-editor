@@ -1,13 +1,14 @@
 using System.Diagnostics;
 using MapEditor.Core.GameData;
 using MapEditor.Core.IO;
-using MapEditor.Core.Model;
+using MapEditor.Core.Rendering;
 
 return args switch
 {
     ["info", var world] => Info(world),
     ["roundtrip", var world, var output, .. var rest] => RoundTrip(world, output, overwrite: rest.Contains("--overwrite")),
     ["installs"] => Installs(),
+    ["render", var world, var output, .. var rest] => Render(world, output, rest.Length > 0 ? int.Parse(rest[0]) : -1),
     _ => Usage(),
 };
 
@@ -20,8 +21,49 @@ static int Usage()
             Load a world, write it back out, re-load the output and compare every layer.
         mapeditor-cli installs
             List detected 7 Days to Die installs.
+        mapeditor-cli render <worldFolder> <out.png> [level]
+            Render the editor's map view (default: 2 levels below the top) to a PNG.
         """);
     return 2;
+}
+
+static int Render(string folder, string output, int level)
+{
+    var world = WorldReader.Read(folder);
+    var install = GameInstall.FindCandidates().FirstOrDefault();
+    var biomes = install is null ? BiomeTable.Vanilla : BiomeTable.Load(GameInstall.Open(install));
+    var renderer = new MapRenderer(world, biomes);
+    if (level < 0) level = Math.Max(0, renderer.Levels - 3);
+
+    int tiles = renderer.TilesAcross(level);
+    int px = (int)Math.Ceiling(world.Size / (double)MapRenderer.MetresPerPixel(level));
+    var image = new byte[px * px * 4];
+    var sw = Stopwatch.StartNew();
+    Parallel.For(0, tiles * tiles, i =>
+    {
+        int tx = i % tiles, ty = i / tiles;
+        var tile = new uint[MapRenderer.TileSize * MapRenderer.TileSize];
+        renderer.RenderTile(level, tx, ty, MapLayers.All, tile);
+        for (int y = 0; y < MapRenderer.TileSize; y++)
+        {
+            int iy = ty * MapRenderer.TileSize + y;
+            if (iy >= px) break;
+            for (int x = 0; x < MapRenderer.TileSize; x++)
+            {
+                int ix = tx * MapRenderer.TileSize + x;
+                if (ix >= px) break;
+                uint c = tile[y * MapRenderer.TileSize + x];
+                int o = (iy * px + ix) * 4;
+                image[o] = (byte)(c >> 16);
+                image[o + 1] = (byte)(c >> 8);
+                image[o + 2] = (byte)c;
+                image[o + 3] = (byte)(c >> 24);
+            }
+        }
+    });
+    Console.WriteLine($"level {level}: {tiles}x{tiles} tiles, {px}x{px} px in {sw.Elapsed.TotalSeconds:0.00} s");
+    Png.WriteRgba(output, px, px, image);
+    return 0;
 }
 
 static int Info(string folder)
