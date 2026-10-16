@@ -9,6 +9,9 @@ public enum EditorTool
     Smooth,
     Noise,
     Stamp,
+    Biome,
+    Radiation,
+    Water,
 }
 
 /// <summary>A tool as listed in the tool panel, with its keyboard shortcut.</summary>

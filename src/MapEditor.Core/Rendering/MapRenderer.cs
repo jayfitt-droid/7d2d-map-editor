@@ -25,9 +25,8 @@ public sealed class MapRenderer
     public const int TileSize = 256;
 
     private readonly World _world;
-    private readonly uint[] _biomeDisplay = [];
-    private readonly int _biomeScale;
-    private readonly int _radiationScale;
+    private readonly BiomeTable _biomeTable;
+    private uint[] _biomeDisplay = [];
 
     // Muted display colours by biome name; biomes.png's own colours are id codes, not meant for viewing.
     private static readonly Dictionary<string, uint> DisplayColours = new(StringComparer.OrdinalIgnoreCase)
@@ -43,14 +42,19 @@ public sealed class MapRenderer
     public MapRenderer(World world, BiomeTable biomeTable)
     {
         _world = world;
+        _biomeTable = biomeTable;
         Levels = LevelCount(world.Size);
-        if (world.Biomes is { } b)
-        {
-            _biomeScale = Math.Max(1, world.Size / b.Indices.Width);
-            _biomeDisplay = b.Palette.Select(rgb =>
-                biomeTable.FindByColor(rgb) is { } def && DisplayColours.TryGetValue(def.Name, out uint c) ? c : rgb).ToArray();
-        }
-        if (world.Radiation is { } r) _radiationScale = Math.Max(1, world.Size / r.Width);
+    }
+
+    /// <summary>Display colours for the biome palette, rebuilt when painting adds a colour or a layer.</summary>
+    private uint[] BiomeDisplay(IndexedLayer biomes)
+    {
+        var display = _biomeDisplay;
+        if (display.Length == biomes.Palette.Count) return display;
+        display = biomes.Palette.Select(rgb =>
+            _biomeTable.FindByColor(rgb) is { } def && DisplayColours.TryGetValue(def.Name, out uint c) ? c : rgb).ToArray();
+        _biomeDisplay = display;
+        return display;
     }
 
     public World World => _world;
@@ -79,11 +83,15 @@ public sealed class MapRenderer
         int size = _world.Size;
         int step = 1 << level;
         var height = _world.Height;
-        bool biomes = (layers & MapLayers.Biomes) != 0 && _world.Biomes is not null;
+        var biomeLayer = (layers & MapLayers.Biomes) != 0 ? _world.Biomes : null;
+        bool biomes = biomeLayer is not null;
+        var biomeDisplay = biomeLayer is null ? [] : BiomeDisplay(biomeLayer);
+        int biomeScale = biomeLayer is null ? 1 : Math.Max(1, size / biomeLayer.Indices.Width);
         bool shade = (layers & MapLayers.Hillshade) != 0;
         var water = (layers & MapLayers.Water) != 0 ? _world.Water : null;
         var roads = (layers & MapLayers.Roads) != 0 ? _world.Roads : null;
         var radiation = (layers & MapLayers.Radiation) != 0 ? _world.Radiation : null;
+        int radiationScale = radiation is null ? 1 : Math.Max(1, size / radiation.Width);
 
         for (int py = 0; py < TileSize; py++)
         {
@@ -98,7 +106,7 @@ public sealed class MapRenderer
                 if (x >= size) { row[px] = 0; continue; }
 
                 float h = height[x, z] / 257f;
-                uint rgb = biomes ? _biomeDisplay[_world.Biomes!.Indices[x / _biomeScale, z / _biomeScale]] : ElevationGrey(h);
+                uint rgb = biomes ? biomeDisplay[biomeLayer!.Indices[x / biomeScale, z / biomeScale]] : ElevationGrey(h);
                 float r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
 
                 if (shade)
@@ -124,7 +132,7 @@ public sealed class MapRenderer
                     Blend(ref r, ref g, ref b, roadColour, 0.9f);
                 }
 
-                if (radiation is not null && radiation[x / _radiationScale, z / _radiationScale] > 0)
+                if (radiation is not null && radiation[x / radiationScale, z / radiationScale] > 0)
                     Blend(ref r, ref g, ref b, 0xD02020, 0.45f);
 
                 row[px] = 0xFF000000u | (uint)Math.Min(255f, r) << 16 | (uint)Math.Min(255f, g) << 8 | (uint)Math.Min(255f, b);

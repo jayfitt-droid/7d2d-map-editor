@@ -26,7 +26,24 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _gameFolderText = "";
     [ObservableProperty] private bool _isBusy;
 
-    public BiomeTable Biomes { get; set; } = BiomeTable.Vanilla;
+    public BiomeTable Biomes
+    {
+        get => _biomes;
+        set
+        {
+            _biomes = value;
+            // Biomes the editor can paint; "underwater" is the game's own lake-bed biome, not a land biome.
+            var keep = SelectedBiome?.Name;
+            BiomeChoices.Clear();
+            foreach (var b in value.Biomes.Where(b => !b.Name.Equals("underwater", StringComparison.OrdinalIgnoreCase)))
+                BiomeChoices.Add(b);
+            SelectedBiome = BiomeChoices.FirstOrDefault(b => b.Name == keep) ?? BiomeChoices.FirstOrDefault();
+        }
+    }
+
+    private BiomeTable _biomes = BiomeTable.Vanilla;
+
+    public MainViewModel() => Biomes = BiomeTable.Vanilla;
     public PrefabLibrary Prefabs { get; set; } = PrefabLibrary.Empty;
     public StampLibrary Stamps { get; set; } = StampLibrary.Empty;
 
@@ -41,16 +58,24 @@ public sealed partial class MainViewModel : ObservableObject
         new(EditorTool.Smooth, "Smooth", "S"),
         new(EditorTool.Noise, "Roughen", "N"),
         new(EditorTool.Stamp, "Stamp", "T"),
+        new(EditorTool.Biome, "Paint biome", "B"),
+        new(EditorTool.Radiation, "Paint radiation", "D"),
+        new(EditorTool.Water, "Water fill", "W"),
     ];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsBrushTool), nameof(IsStampTool), nameof(IsFlattenTool), nameof(IsNoiseTool))]
+    [NotifyPropertyChangedFor(nameof(IsBrushTool), nameof(IsStampTool), nameof(IsFlattenTool), nameof(IsNoiseTool),
+        nameof(HasRadius), nameof(IsBiomeTool), nameof(IsRadiationTool), nameof(IsWaterTool))]
     private EditorTool _selectedTool = EditorTool.Pan;
 
     public bool IsBrushTool => SelectedTool is EditorTool.Raise or EditorTool.Lower or EditorTool.Flatten or EditorTool.Smooth or EditorTool.Noise;
     public bool IsStampTool => SelectedTool == EditorTool.Stamp;
     public bool IsFlattenTool => SelectedTool == EditorTool.Flatten;
     public bool IsNoiseTool => SelectedTool == EditorTool.Noise;
+    public bool IsBiomeTool => SelectedTool == EditorTool.Biome;
+    public bool IsRadiationTool => SelectedTool == EditorTool.Radiation;
+    public bool IsWaterTool => SelectedTool == EditorTool.Water;
+    public bool HasRadius => IsBrushTool || IsBiomeTool || IsRadiationTool;
 
     [ObservableProperty] private double _brushRadius = 60;
     [ObservableProperty] private double _brushStrength = 0.5;
@@ -74,6 +99,12 @@ public sealed partial class MainViewModel : ObservableObject
                 || value.StartsWith("river", StringComparison.OrdinalIgnoreCase)
                 || value.StartsWith("water", StringComparison.OrdinalIgnoreCase);
     }
+
+    public System.Collections.ObjectModel.ObservableCollection<BiomeDefinition> BiomeChoices { get; } = [];
+    [ObservableProperty] private BiomeDefinition? _selectedBiome;
+
+    /// <summary>Water surface for the fill tool, in whole metres (splat4 stores a byte).</summary>
+    [ObservableProperty] private double _waterLevel = 30;
 
     [ObservableProperty] private string _undoText = "Undo";
     [ObservableProperty] private string _redoText = "Redo";

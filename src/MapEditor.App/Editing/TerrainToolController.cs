@@ -7,7 +7,7 @@ using MapEditor.Core.Ops;
 
 namespace MapEditor.App.Editing;
 
-/// <summary>Turns tool input on the map into terrain edits, one undo step per stroke.</summary>
+/// <summary>Turns tool input on the map into terrain and layer edits, one undo step per stroke.</summary>
 public sealed class TerrainToolController
 {
     private readonly MapView _map;
@@ -16,6 +16,7 @@ public sealed class TerrainToolController
     private EditSession? _session;
     private Point _last; // grid coords (x east, z north) of the previous dab
     private Noise? _noise;
+    private bool _erase; // Shift held at stroke start: erase radiation, drain water
 
     public TerrainToolController(MapView map, MainViewModel vm, UndoStack undo)
     {
@@ -39,10 +40,12 @@ public sealed class TerrainToolController
         if (_vm.IsBusy && e.Phase == ToolPhase.Down) return;
         var grid = new Point(e.MapPoint.X, world.Size - e.MapPoint.Y);
 
-        // Ctrl+click samples the height under the cursor into the Flatten target, whatever the tool.
+        // Ctrl+click samples the height under the cursor into the Flatten target (or the water level).
         if (e.Phase == ToolPhase.Down && e.Modifiers.HasFlag(ModifierKeys.Control))
         {
-            if (world.Height.Contains((int)grid.X, (int)grid.Y))
+            if (_vm.SelectedTool == EditorTool.Water)
+                SampleWaterLevel(world, grid);
+            else if (world.Height.Contains((int)grid.X, (int)grid.Y))
             {
                 _vm.FlattenHeight = Math.Round(World.HeightToMetres(world.Height[(int)grid.X, (int)grid.Y]), 1);
                 _vm.Status = $"Flatten height set to {_vm.FlattenHeight:0.0} m";
@@ -53,9 +56,10 @@ public sealed class TerrainToolController
         switch (e.Phase)
         {
             case ToolPhase.Down:
+                _erase = e.Modifiers.HasFlag(ModifierKeys.Shift);
                 BeginStroke(world, grid);
                 break;
-            case ToolPhase.Move when _session is not null && _vm.SelectedTool != EditorTool.Stamp:
+            case ToolPhase.Move when _session is not null && _vm.SelectedTool is not (EditorTool.Stamp or EditorTool.Water):
                 StrokeTo(world, grid);
                 break;
             case ToolPhase.Up when _session is not null:
@@ -68,7 +72,10 @@ public sealed class TerrainToolController
     {
         var tool = _vm.SelectedTool;
         if (tool == EditorTool.Pan) return;
-        _session = new EditSession(_vm.Tools.First(t => t.Tool == tool).Label);
+        string label = _vm.Tools.First(t => t.Tool == tool).Label;
+        if (_erase && tool == EditorTool.Radiation) label = "Erase radiation";
+        if (_erase && tool == EditorTool.Water) label = "Drain water";
+        _session = new EditSession(label);
         _noise = tool == EditorTool.Noise ? new Noise(Environment.TickCount) : null;
 
         if (tool == EditorTool.Flatten && !_vm.FlattenLocked && world.Height.Contains((int)grid.X, (int)grid.Y))
@@ -76,6 +83,8 @@ public sealed class TerrainToolController
 
         if (tool == EditorTool.Stamp)
             PlaceStamp(world, grid);
+        else if (tool == EditorTool.Water)
+            FillWater(world, grid);
         else
             Dab(world, grid);
         _last = grid;
@@ -96,6 +105,18 @@ public sealed class TerrainToolController
 
     private void Dab(World world, Point grid)
     {
+        float radius = (float)_vm.BrushRadius;
+        switch (_vm.SelectedTool)
+        {
+            case EditorTool.Biome:
+                if (_vm.SelectedBiome is { } biome)
+                    _map.InvalidateRegion(LayerPaint.PaintBiome(world, (float)grid.X, (float)grid.Y, radius, biome.Color, _session!));
+                return;
+            case EditorTool.Radiation:
+                _map.InvalidateRegion(LayerPaint.PaintRadiation(world, (float)grid.X, (float)grid.Y, radius, _erase, _session!));
+                return;
+        }
+
         var mode = _vm.SelectedTool switch
         {
             EditorTool.Raise => BrushMode.Raise,
@@ -123,6 +144,41 @@ public sealed class TerrainToolController
         var rect = StampOp.Apply(world, stamp, placement, _session!);
         _map.InvalidateRegion(rect);
     }
+
+    private void FillWater(World world, Point grid)
+    {
+        int x = (int)grid.X, z = (int)grid.Y;
+        if (!world.Height.Contains(x, z)) return;
+        if (_erase)
+        {
+            var drained = WaterFill.Drain(world, x, z, _session!);
+            _vm.Status = drained.Cells > 0 ? $"Drained {Area(drained.Cells)} of water." : "There is no water here to drain.";
+            _map.InvalidateRegion(drained.Bounds);
+            return;
+        }
+        byte level = (byte)Math.Clamp(Math.Round(_vm.WaterLevel), 1, 255);
+        var filled = WaterFill.Fill(world, x, z, level, _session!);
+        if (filled.Cells == 0)
+            _vm.Status = $"The ground here is above {level} m; click lower ground or raise the water level.";
+        else
+            _vm.Status = $"Filled {Area(filled.Cells)} to {level} m."
+                + (filled.Cells > (long)world.Size * world.Size / 4 ? " That flooded much of the map; Ctrl+Z undoes it." : "");
+        _map.InvalidateRegion(filled.Bounds);
+    }
+
+    private void SampleWaterLevel(World world, Point grid)
+    {
+        int x = (int)grid.X, z = (int)grid.Y;
+        if (!world.Height.Contains(x, z)) return;
+        byte surface = world.Water?[x, z] ?? 0;
+        float ground = World.HeightToMetres(world.Height[x, z]);
+        // On existing water take its surface; on land, the level that just reaches this point.
+        _vm.WaterLevel = surface > 0 && ground <= surface + 0.5f ? surface : Math.Min(255, Math.Ceiling(ground) + 1);
+        _vm.Status = $"Water level set to {_vm.WaterLevel:0} m";
+    }
+
+    private static string Area(long cells) =>
+        cells >= 1_000_000 ? $"{cells / 1e6:0.00} km²" : $"{cells:N0} m²";
 
     private void EndStroke()
     {

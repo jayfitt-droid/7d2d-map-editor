@@ -84,9 +84,41 @@
                     <ListBox ItemsSource="{Binding Tools}" SelectedValuePath="Tool" SelectedValue="{Binding SelectedTool}"
                              DisplayMemberPath="Display" Background="#2D2E34" Foreground="#E0E0E6" BorderThickness="0" />
 
-                    <StackPanel Visibility="{Binding IsBrushTool, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel Visibility="{Binding HasRadius, Converter={StaticResource BoolToVisibility}}">
                         <TextBlock Style="{StaticResource FieldLabel}" Text="{Binding BrushRadius, StringFormat=Radius: {0:0} m  ([ and ])}" />
                         <Slider Minimum="2" Maximum="800" Value="{Binding BrushRadius}" />
+                    </StackPanel>
+
+                    <StackPanel Visibility="{Binding IsBiomeTool, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="Biome" />
+                        <ComboBox ItemsSource="{Binding BiomeChoices}" SelectedItem="{Binding SelectedBiome}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border Width="14" Height="14" Margin="0,0,6,0" BorderBrush="#555" BorderThickness="1"
+                                                Background="{Binding Color, Converter={StaticResource RgbToBrush}}" />
+                                        <TextBlock Text="{Binding Name}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Foreground="#8A8A96" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Text="Biomes are stored in 8 m cells. Turn on the Biomes layer to see them." />
+                    </StackPanel>
+
+                    <StackPanel Visibility="{Binding IsRadiationTool, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Foreground="#8A8A96" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                   Text="Drag to add radiation, Shift+drag to erase. Radiation is stored in 32 m cells; RWG puts it along the map edge." />
+                    </StackPanel>
+
+                    <StackPanel Visibility="{Binding IsWaterTool, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="{Binding WaterLevel, StringFormat=Water level: {0:0} m}" />
+                        <Slider Minimum="1" Maximum="255" Value="{Binding WaterLevel}" IsSnapToTickEnabled="True" TickFrequency="1" />
+                        <TextBlock Foreground="#8A8A96" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Text="Click low ground to flood everything connected below the level. Shift+click drains a body of water. Ctrl+click samples a level. The game's sea level is 30 m." />
+                    </StackPanel>
+
+                    <StackPanel Visibility="{Binding IsBrushTool, Converter={StaticResource BoolToVisibility}}">
                         <TextBlock Style="{StaticResource FieldLabel}" Text="{Binding BrushStrength, StringFormat=Strength: {0:0.00}}" />
                         <Slider Minimum="0.01" Maximum="1" Value="{Binding BrushStrength}" />
                         <StackPanel Visibility="{Binding IsFlattenTool, Converter={StaticResource BoolToVisibility}}">

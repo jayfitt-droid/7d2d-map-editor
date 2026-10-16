@@ -401,7 +401,7 @@ public partial class MainWindow : Window
         Map.ToolActive = _vm.SelectedTool != EditorTool.Pan;
         Map.BrushCursor = _vm.SelectedTool switch
         {
-            EditorTool.Pan => null,
+            EditorTool.Pan or EditorTool.Water => null,
             EditorTool.Stamp => new BrushCursor(_vm.StampSize, Square: true, _vm.StampRotation),
             _ => new BrushCursor(_vm.BrushRadius * 2),
         };
