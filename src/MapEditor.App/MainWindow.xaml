@@ -15,19 +15,47 @@
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Margin" Value="0,12,0,4" />
         </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#C8C8D0" />
+            <Setter Property="Margin" Value="0,6,0,0" />
+        </Style>
+        <Style TargetType="Slider">
+            <Setter Property="Margin" Value="0,2,0,0" />
+        </Style>
     </Window.Resources>
     <Window.InputBindings>
+        <KeyBinding Key="N" Modifiers="Control" Command="{x:Static local:MainWindow.NewWorldCommand}" />
         <KeyBinding Key="O" Modifiers="Control" Command="{x:Static local:MainWindow.OpenWorldCommand}" />
+        <KeyBinding Key="S" Modifiers="Control" Command="{x:Static local:MainWindow.SaveCommand}" />
+        <KeyBinding Key="S" Modifiers="Control+Shift" Command="{x:Static local:MainWindow.SaveAsCommand}" />
+        <KeyBinding Key="Z" Modifiers="Control" Command="{x:Static local:MainWindow.UndoCommand}" />
+        <KeyBinding Key="Y" Modifiers="Control" Command="{x:Static local:MainWindow.RedoCommand}" />
+        <KeyBinding Key="Z" Modifiers="Control+Shift" Command="{x:Static local:MainWindow.RedoCommand}" />
     </Window.InputBindings>
     <Window.CommandBindings>
+        <CommandBinding Command="{x:Static local:MainWindow.NewWorldCommand}" Executed="NewWorld_Executed" />
         <CommandBinding Command="{x:Static local:MainWindow.OpenWorldCommand}" Executed="OpenWorld_Executed" />
+        <CommandBinding Command="{x:Static local:MainWindow.SaveCommand}" Executed="Save_Executed" CanExecute="HasWorld_CanExecute" />
+        <CommandBinding Command="{x:Static local:MainWindow.SaveAsCommand}" Executed="SaveAs_Executed" CanExecute="HasWorld_CanExecute" />
+        <CommandBinding Command="{x:Static local:MainWindow.UndoCommand}" Executed="Undo_Executed" CanExecute="Undo_CanExecute" />
+        <CommandBinding Command="{x:Static local:MainWindow.RedoCommand}" Executed="Redo_Executed" CanExecute="Redo_CanExecute" />
     </Window.CommandBindings>
     <DockPanel>
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
+                <MenuItem Header="_New World..." InputGestureText="Ctrl+N" Command="{x:Static local:MainWindow.NewWorldCommand}" />
                 <MenuItem Header="_Open World..." InputGestureText="Ctrl+O" Command="{x:Static local:MainWindow.OpenWorldCommand}" />
+                <MenuItem Header="_Save World" InputGestureText="Ctrl+S" Command="{x:Static local:MainWindow.SaveCommand}" />
+                <MenuItem Header="Save World _As..." InputGestureText="Ctrl+Shift+S" Command="{x:Static local:MainWindow.SaveAsCommand}" />
+                <Separator />
+                <MenuItem Header="_Import Heightmap..." Click="ImportHeightmap_Click" />
+                <MenuItem Header="_Export Heightmap..." Click="ExportHeightmap_Click" />
                 <Separator />
                 <MenuItem Header="E_xit" Click="Exit_Click" />
+            </MenuItem>
+            <MenuItem Header="_Edit">
+                <MenuItem Header="{Binding UndoText}" InputGestureText="Ctrl+Z" Command="{x:Static local:MainWindow.UndoCommand}" />
+                <MenuItem Header="{Binding RedoText}" InputGestureText="Ctrl+Y" Command="{x:Static local:MainWindow.RedoCommand}" />
             </MenuItem>
             <MenuItem Header="_View">
                 <MenuItem Header="_Fit World" InputGestureText="Home" Click="Fit_Click" />
@@ -49,9 +77,45 @@
             </StatusBarItem>
         </StatusBar>
 
-        <Border DockPanel.Dock="Left" Width="240" Background="#25262B" BorderBrush="#33343A" BorderThickness="0,0,1,0">
+        <Border DockPanel.Dock="Left" Width="250" Background="#25262B" BorderBrush="#33343A" BorderThickness="0,0,1,0">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="12,0,12,12">
+                    <TextBlock Text="Tools" Style="{StaticResource PanelHeader}" />
+                    <ListBox ItemsSource="{Binding Tools}" SelectedValuePath="Tool" SelectedValue="{Binding SelectedTool}"
+                             DisplayMemberPath="Display" Background="#2D2E34" Foreground="#E0E0E6" BorderThickness="0" />
+
+                    <StackPanel Visibility="{Binding IsBrushTool, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="{Binding BrushRadius, StringFormat=Radius: {0:0} m  ([ and ])}" />
+                        <Slider Minimum="2" Maximum="800" Value="{Binding BrushRadius}" />
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="{Binding BrushStrength, StringFormat=Strength: {0:0.00}}" />
+                        <Slider Minimum="0.01" Maximum="1" Value="{Binding BrushStrength}" />
+                        <StackPanel Visibility="{Binding IsFlattenTool, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="Target height (m)" />
+                            <TextBox Text="{Binding FlattenHeight, UpdateSourceTrigger=PropertyChanged, StringFormat=0.0}" />
+                            <CheckBox Content="Lock height (else picked at stroke start)" IsChecked="{Binding FlattenLocked}" />
+                            <TextBlock Foreground="#8A8A96" FontSize="11" TextWrapping="Wrap" Text="Ctrl+click samples the height under the cursor." />
+                        </StackPanel>
+                        <StackPanel Visibility="{Binding IsNoiseTool, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="{Binding NoiseScale, StringFormat=Feature size: {0:0} m}" />
+                            <Slider Minimum="4" Maximum="400" Value="{Binding NoiseScale}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Visibility="{Binding IsStampTool, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="Stamp" />
+                        <ComboBox ItemsSource="{Binding StampNames}" SelectedItem="{Binding SelectedStamp}" />
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="{Binding StampSize, StringFormat=Size: {0:0} m  ([ and ])}" />
+                        <Slider Minimum="32" Maximum="4000" Value="{Binding StampSize}" />
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="{Binding StampRotation, StringFormat=Rotation: {0:0}°  (Q and E)}" />
+                        <Slider Minimum="0" Maximum="359" Value="{Binding StampRotation}" />
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="{Binding StampStrength, StringFormat=Strength: {0:0.00}}" />
+                        <Slider Minimum="0.05" Maximum="1" Value="{Binding StampStrength}" />
+                        <CheckBox Content="Additive (add height instead of blending)" IsChecked="{Binding StampAdditive}" />
+                        <CheckBox Content="Fill water" IsChecked="{Binding StampWater}" />
+                        <TextBlock Foreground="#8A8A96" FontSize="11" TextWrapping="Wrap"
+                                   Text="Game stamps blend toward 255 m (raise) or 0 m (carve) by their shape; lower the strength for gentler results." />
+                    </StackPanel>
+
                     <TextBlock Text="Layers" Style="{StaticResource PanelHeader}" />
                     <CheckBox Content="Hillshade" IsChecked="{Binding ShowHillshade}" />
                     <CheckBox Content="Biomes" IsChecked="{Binding ShowBiomes}" />
@@ -77,7 +141,7 @@
                          ShowSpawns="{Binding ShowSpawns}" />
             <map:MiniMap x:Name="Overview" Width="200" Height="200" Margin="12"
                          HorizontalAlignment="Right" VerticalAlignment="Bottom" />
-            <TextBlock Text="Loading..." Foreground="White" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"
+            <TextBlock Text="Working..." Foreground="White" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"
                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
         </Grid>
     </DockPanel>

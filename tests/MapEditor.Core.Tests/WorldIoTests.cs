@@ -112,15 +112,26 @@ public sealed class WorldIoTests : IDisposable
         world.ExtraFiles.Remove(WorldFiles.Level);
         Assert.Throws<InvalidOperationException>(() => WorldWriter.Write(world, _dir));
 
-        string template = Path.Combine(Path.GetTempPath(), $"ttw-{Guid.NewGuid():N}.ttw");
-        File.WriteAllBytes(template, [9, 9]);
-        try
-        {
-            string outDir = Path.Combine(_dir, "templated");
-            WorldWriter.Write(world, outDir, new WorldWriteOptions { LevelTemplatePath = template });
-            Assert.Equal([9, 9], File.ReadAllBytes(Path.Combine(outDir, WorldFiles.Level)));
-        }
-        finally { File.Delete(template); }
+        string outDir = Path.Combine(_dir, "templated");
+        WorldWriter.Write(world, outDir, new WorldWriteOptions { LevelTemplate = [9, 9] });
+        Assert.Equal([9, 9], File.ReadAllBytes(Path.Combine(outDir, WorldFiles.Level)));
+    }
+
+    [Fact]
+    public void New_level_guid_replaces_only_the_guid()
+    {
+        var world = MakeWorld();
+        byte[] ttw = [.. "ttw\0"u8, 1, 2, 3, 32, .. "A6BA93844F7C91B4E9667E128C5C0BAC"u8];
+        world.ExtraFiles[WorldFiles.Level] = ttw;
+
+        WorldWriter.Write(world, _dir, new WorldWriteOptions { NewLevelGuid = true });
+
+        var written = File.ReadAllBytes(Path.Combine(_dir, WorldFiles.Level));
+        Assert.Equal(ttw.Length, written.Length);
+        Assert.Equal(ttw[..^32], written[..^32]);
+        Assert.NotEqual(ttw[^32..], written[^32..]);
+        Assert.True(LevelFile.EndsWithGuid(written));
+        Assert.Equal(written, world.ExtraFiles[WorldFiles.Level]);
     }
 
     /// <summary>Set MAPEDITOR_TEST_WORLD to a real world folder to run this.</summary>

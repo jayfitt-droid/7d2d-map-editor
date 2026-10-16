@@ -1,0 +1,76 @@
+<Window x:Class="MapEditor.App.NewWorldDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="New World" Width="440" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="16">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="140" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.Resources>
+            <Style TargetType="TextBlock">
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Margin" Value="0,4" />
+            </Style>
+            <Style TargetType="TextBox">
+                <Setter Property="Margin" Value="0,4" />
+                <Setter Property="Padding" Value="2" />
+            </Style>
+            <Style TargetType="ComboBox">
+                <Setter Property="Margin" Value="0,4" />
+            </Style>
+        </Grid.Resources>
+
+        <TextBlock Grid.Row="0" Text="Name" />
+        <TextBox Grid.Row="0" Grid.Column="1" x:Name="NameBox" Text="My World" />
+
+        <TextBlock Grid.Row="1" Text="Size (metres)" />
+        <ComboBox Grid.Row="1" Grid.Column="1" x:Name="SizeBox" />
+
+        <TextBlock Grid.Row="2" Text="Ground height (m)" />
+        <TextBox Grid.Row="2" Grid.Column="1" x:Name="BaseHeightBox" Text="40"
+                 ToolTip="Starting ground height. Water sits at 30 m, so stay above that for dry land." />
+
+        <TextBlock Grid.Row="3" Text="Roughness (m)" />
+        <TextBox Grid.Row="3" Grid.Column="1" x:Name="NoiseAmpBox" Text="12"
+                 ToolTip="How far noise lifts or lowers the ground. 0 for a flat start." />
+
+        <TextBlock Grid.Row="4" Text="Feature size (m)" />
+        <TextBox Grid.Row="4" Grid.Column="1" x:Name="NoiseScaleBox" Text="600"
+                 ToolTip="Width of the rolling hills the noise makes." />
+
+        <TextBlock Grid.Row="5" Text="Seed" />
+        <TextBox Grid.Row="5" Grid.Column="1" x:Name="SeedBox" />
+
+        <TextBlock Grid.Row="6" Text="Biome" />
+        <ComboBox Grid.Row="6" Grid.Column="1" x:Name="BiomeBox" DisplayMemberPath="Name" />
+
+        <TextBlock Grid.Row="7" Text="Edges (N / E / S / W)" />
+        <UniformGrid Grid.Row="7" Grid.Column="1" Columns="4">
+            <ComboBox x:Name="EdgeN" Margin="0,4,4,4" />
+            <ComboBox x:Name="EdgeE" Margin="0,4,4,4" />
+            <ComboBox x:Name="EdgeS" Margin="0,4,4,4" />
+            <ComboBox x:Name="EdgeW" Margin="0,4,0,4" />
+        </UniformGrid>
+
+        <TextBlock Grid.Row="8" Grid.ColumnSpan="2" x:Name="ErrorText" Foreground="Firebrick" TextWrapping="Wrap" />
+
+        <StackPanel Grid.Row="9" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Create" IsDefault="True" Width="90" Margin="0,0,8,0" Click="Create_Click" />
+            <Button Content="Cancel" IsCancel="True" Width="90" />
+        </StackPanel>
+    </Grid>
+</Window>

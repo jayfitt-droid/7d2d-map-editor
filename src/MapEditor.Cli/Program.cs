@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using MapEditor.Core.GameData;
 using MapEditor.Core.IO;
+using MapEditor.Core.Ops;
 using MapEditor.Core.Rendering;
 
 return args switch
@@ -9,6 +10,7 @@ return args switch
     ["roundtrip", var world, var output, .. var rest] => RoundTrip(world, output, overwrite: rest.Contains("--overwrite")),
     ["installs"] => Installs(),
     ["render", var world, var output, .. var rest] => Render(world, output, rest.Length > 0 ? int.Parse(rest[0]) : -1),
+    ["new", var output, .. var rest] => New(output, rest.Length > 0 ? int.Parse(rest[0]) : 4096, rest.Length > 1 ? rest[1] : "LLLL"),
     _ => Usage(),
 };
 
@@ -23,8 +25,31 @@ static int Usage()
             List detected 7 Days to Die installs.
         mapeditor-cli render <worldFolder> <out.png> [level]
             Render the editor's map view (default: 2 levels below the top) to a PNG.
+        mapeditor-cli new <outFolder> [size] [edges]
+            Create a blank world. edges = 4 letters for N,E,S,W: L land, W water, N none (default LLLL).
         """);
     return 2;
+}
+
+static int New(string output, int size, string edges)
+{
+    var installPath = GameInstall.FindCandidates().FirstOrDefault();
+    var install = installPath is null ? null : GameInstall.Open(installPath);
+    var stamps = install is null ? StampLibrary.Empty : StampLibrary.Load(install);
+    var template = LevelFile.FindTemplate(install);
+    if (template is null)
+    {
+        Console.Error.WriteLine("No main.ttw template found; generate any world in the game once first.");
+        return 1;
+    }
+
+    var styles = edges.ToUpperInvariant().Select(c => c switch { 'W' => EdgeStyle.Water, 'N' => EdgeStyle.None, _ => EdgeStyle.Land }).ToArray();
+    var sw = Stopwatch.StartNew();
+    var world = NewWorldGenerator.Create(new NewWorldOptions(Path.GetFileName(output), size, Seed: Environment.TickCount, Edges: styles),
+        stamps, File.ReadAllBytes(template.Path));
+    WorldWriter.Write(world, output);
+    Console.WriteLine($"Created {size}x{size} world in {sw.Elapsed.TotalSeconds:0.0} s (main.ttw from {template.Path}, {template.GameVersion})");
+    return 0;
 }
 
 static int Render(string folder, string output, int level)

@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using MapEditor.Core.Edit;
 using MapEditor.Core.GameData;
 using MapEditor.Core.Model;
 using MapEditor.Core.Rendering;
@@ -21,8 +22,10 @@ public sealed class MapView : FrameworkElement
     private const double ZoomStep = 1.25;
 
     private readonly TileCache _cache = new(768);
-    private readonly ConcurrentStack<TileKey> _queue = new();
-    private readonly ConcurrentDictionary<TileKey, byte> _pending = new();
+    private readonly ConcurrentStack<(TileKey Key, int Epoch)> _queue = new();
+    private readonly ConcurrentDictionary<(TileKey Key, int Epoch), byte> _pending = new();
+    // Bumped for every tile an edit touches; cached tiles with an older epoch are redrawn.
+    private readonly ConcurrentDictionary<(int Level, int X, int Y), int> _epochs = new();
     private volatile HashSet<TileKey> _wanted = [];
     private int _workers;
     private int _generation;
@@ -34,6 +37,8 @@ public sealed class MapView : FrameworkElement
     private bool _needsFit;
     private Point? _dragStart;
     private Point _dragOrigin;
+    private bool _toolDrag;
+    private Point? _mouseMap;
 
     // Prefab outlines are drawn in software (see OverlayRaster); colours are premultiplied BGRA.
     private static readonly uint PrefabColour = OverlayRaster.Premultiply(Color.FromArgb(220, 255, 160, 40));
@@ -44,6 +49,8 @@ public sealed class MapView : FrameworkElement
     private static readonly Brush SpawnFill = Frozen(new SolidColorBrush(Color.FromRgb(60, 220, 90)));
     private static readonly Pen SpawnPen = Frozen(new Pen(Brushes.Black, 1));
     private static readonly Brush Background = Frozen(new SolidColorBrush(Color.FromRgb(24, 25, 28)));
+    private static readonly Pen CursorPen = Frozen(new Pen(Brushes.White, 1.5));
+    private static readonly Pen CursorShadowPen = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(140, 0, 0, 0)), 3.5));
 
     public MapView()
     {
@@ -76,6 +83,25 @@ public sealed class MapView : FrameworkElement
     }
 
     public PrefabLibrary Prefabs { get; set; } = PrefabLibrary.Empty;
+
+    /// <summary>When true, left-button drags go to <see cref="ToolInput"/>; the middle button still pans.</summary>
+    public bool ToolActive { get; set; }
+
+    /// <summary>Left-button presses, drags and releases while <see cref="ToolActive"/> is set, in map coordinates.</summary>
+    public event EventHandler<ToolInputEventArgs>? ToolInput;
+
+    private BrushCursor? _brushCursor;
+
+    /// <summary>Outline drawn under the mouse to show what a tool will affect.</summary>
+    public BrushCursor? BrushCursor
+    {
+        get => _brushCursor;
+        set
+        {
+            _brushCursor = value;
+            InvalidateVisual();
+        }
+    }
 
     public MapLayers Layers
     {
@@ -189,6 +215,14 @@ public sealed class MapView : FrameworkElement
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         Focus();
+        if (e.ChangedButton == MouseButton.Left && ToolActive && _renderer is not null)
+        {
+            _toolDrag = true;
+            CaptureMouse();
+            ToolInput?.Invoke(this, new ToolInputEventArgs(ToolPhase.Down, ScreenToMap(e.GetPosition(this)), Keyboard.Modifiers));
+            e.Handled = true;
+            return;
+        }
         if (e.ChangedButton is MouseButton.Left or MouseButton.Middle)
         {
             _dragStart = e.GetPosition(this);
@@ -201,6 +235,13 @@ public sealed class MapView : FrameworkElement
 
     protected override void OnMouseUp(MouseButtonEventArgs e)
     {
+        if (_toolDrag && e.ChangedButton == MouseButton.Left)
+        {
+            _toolDrag = false;
+            ToolInput?.Invoke(this, new ToolInputEventArgs(ToolPhase.Up, ScreenToMap(e.GetPosition(this)), Keyboard.Modifiers));
+            ReleaseMouseCapture();
+            return;
+        }
         if (_dragStart is null) return;
         _dragStart = null;
         ReleaseMouseCapture();
@@ -215,10 +256,30 @@ public sealed class MapView : FrameworkElement
             _origin = new Point(_dragOrigin.X - (p.X - start.X) / _scale, _dragOrigin.Y - (p.Y - start.Y) / _scale);
             OnViewChanged();
         }
-        CursorMoved?.Invoke(this, ScreenToMap(p));
+        var map = ScreenToMap(p);
+        if (_toolDrag) ToolInput?.Invoke(this, new ToolInputEventArgs(ToolPhase.Move, map, Keyboard.Modifiers));
+        _mouseMap = map;
+        if (_brushCursor is not null) InvalidateVisual();
+        CursorMoved?.Invoke(this, map);
     }
 
-    protected override void OnMouseLeave(MouseEventArgs e) => CursorMoved?.Invoke(this, null);
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        // Losing capture mid-stroke (for example on alt-tab) still has to finish the stroke.
+        if (_toolDrag)
+        {
+            _toolDrag = false;
+            ToolInput?.Invoke(this, new ToolInputEventArgs(ToolPhase.Up, _mouseMap ?? default, Keyboard.Modifiers));
+        }
+        base.OnLostMouseCapture(e);
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        _mouseMap = null;
+        if (_brushCursor is not null) InvalidateVisual();
+        CursorMoved?.Invoke(this, null);
+    }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -264,15 +325,17 @@ public sealed class MapView : FrameworkElement
         _wanted = wanted;
 
         // Request the top tile first so there is always something to fall back to.
-        Request(topKey);
+        if (!_cache.TryGet(topKey, out _, out int topEpoch) || topEpoch != Epoch(topKey)) Request(topKey);
         for (int ty = ty0; ty <= ty1; ty++)
             for (int tx = tx0; tx <= tx1; tx++)
             {
                 var key = new TileKey(level, tx, ty, gen);
                 var rect = TileRect(level, tx, ty, dpi);
-                if (_cache.TryGet(key, out var bitmap))
+                if (_cache.TryGet(key, out var bitmap, out int epoch))
                 {
+                    // A stale tile is still drawn until its replacement is ready, so edits do not flicker.
                     dc.DrawImage(bitmap, rect);
+                    if (epoch != Epoch(key)) Request(key);
                     continue;
                 }
                 Request(key);
@@ -281,6 +344,53 @@ public sealed class MapView : FrameworkElement
 
         if (ShowPrefabs) DrawPrefabs(dc, visible);
         if (ShowSpawns) DrawSpawns(dc, visible);
+        DrawBrushCursor(dc);
+    }
+
+    private void DrawBrushCursor(DrawingContext dc)
+    {
+        if (_brushCursor is not { } brush || _mouseMap is not { } m) return;
+        var centre = MapToScreen(m);
+        double half = brush.SizeMetres / 2 * _scale;
+        if (brush.Square)
+        {
+            var square = new Rect(centre.X - half, centre.Y - half, half * 2, half * 2);
+            dc.PushTransform(new RotateTransform(brush.RotationDegrees, centre.X, centre.Y));
+            dc.DrawRectangle(null, CursorShadowPen, square);
+            dc.DrawRectangle(null, CursorPen, square);
+            dc.DrawLine(CursorPen, centre, new Point(centre.X, centre.Y - half)); // marks the stamp's "up"
+            dc.Pop();
+        }
+        else
+        {
+            dc.DrawEllipse(null, CursorShadowPen, centre, half, half);
+            dc.DrawEllipse(null, CursorPen, centre, half, half);
+        }
+    }
+
+    private int Epoch(TileKey key) => _epochs.GetValueOrDefault((key.Level, key.X, key.Y));
+
+    /// <summary>
+    /// Marks every tile covering edited cells (grid cells, z from the south) as stale at every level,
+    /// widened so hillshading at the edge picks up the new neighbours.
+    /// </summary>
+    public void InvalidateRegion(GridRect cells)
+    {
+        if (_renderer is null || cells.IsEmpty) return;
+        int size = _renderer.World.Size;
+        double u0 = cells.X0, u1 = cells.X1, v0 = size - cells.Z1, v1 = size - cells.Z0;
+        for (int level = 0; level < _renderer.Levels; level++)
+        {
+            int step = MapRenderer.MetresPerPixel(level);
+            int tileMetres = MapRenderer.TileSize << level;
+            int across = _renderer.TilesAcross(level);
+            int tx0 = Math.Max(0, (int)((u0 - 2 * step) / tileMetres)), tx1 = Math.Min(across - 1, (int)((u1 + 2 * step) / tileMetres));
+            int ty0 = Math.Max(0, (int)((v0 - 2 * step) / tileMetres)), ty1 = Math.Min(across - 1, (int)((v1 + 2 * step) / tileMetres));
+            for (int ty = ty0; ty <= ty1; ty++)
+                for (int tx = tx0; tx <= tx1; tx++)
+                    _epochs.AddOrUpdate((level, tx, ty), 1, (_, e) => e + 1);
+        }
+        InvalidateVisual();
     }
 
     private void DrawFallback(DrawingContext dc, TileKey key, Rect clip, int top, double dpi)
@@ -289,7 +399,7 @@ public sealed class MapView : FrameworkElement
         {
             int shift = a - key.Level;
             var parent = new TileKey(a, key.X >> shift, key.Y >> shift, key.Generation);
-            if (!_cache.TryGet(parent, out var bitmap)) continue;
+            if (!_cache.TryGet(parent, out var bitmap, out _)) continue;
             dc.PushClip(new RectangleGeometry(clip));
             dc.DrawImage(bitmap, TileRect(parent.Level, parent.X, parent.Y, dpi));
             dc.Pop();
@@ -363,13 +473,15 @@ public sealed class MapView : FrameworkElement
         _cache.Clear();
         _queue.Clear();
         _pending.Clear();
+        _epochs.Clear();
         InvalidateVisual();
     }
 
     private void Request(TileKey key)
     {
-        if (!_pending.TryAdd(key, 0)) return;
-        _queue.Push(key);
+        var item = (key, Epoch(key));
+        if (!_pending.TryAdd(item, 0)) return;
+        _queue.Push(item);
         StartWorkerIfRoom();
     }
 
@@ -378,23 +490,25 @@ public sealed class MapView : FrameworkElement
         var buffer = new uint[MapRenderer.TileSize * MapRenderer.TileSize];
         try
         {
-            while (_queue.TryPop(out var key))
+            while (_queue.TryPop(out var item))
             {
+                var (key, epoch) = item;
                 try
                 {
                     var renderer = _renderer;
-                    if (renderer is null || key.Generation != _generation || !_wanted.Contains(key)) continue;
+                    // Skip work no longer needed: old layers, off screen, or superseded by a newer edit.
+                    if (renderer is null || key.Generation != _generation || !_wanted.Contains(key) || epoch != Epoch(key)) continue;
                     renderer.RenderTile(key.Level, key.X, key.Y, (MapLayers)_layers, buffer);
                     if (key.Generation != _generation) continue;
                     var bitmap = BitmapSource.Create(MapRenderer.TileSize, MapRenderer.TileSize, 96, 96,
                         PixelFormats.Pbgra32, null, buffer, MapRenderer.TileSize * 4);
                     bitmap.Freeze();
-                    _cache.Add(key, bitmap);
+                    _cache.Add(key, bitmap, epoch);
                     QueueInvalidate();
                 }
                 finally
                 {
-                    _pending.TryRemove(key, out _);
+                    _pending.TryRemove(item, out _);
                 }
             }
         }

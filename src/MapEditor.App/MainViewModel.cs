@@ -28,6 +28,57 @@ public sealed partial class MainViewModel : ObservableObject
 
     public BiomeTable Biomes { get; set; } = BiomeTable.Vanilla;
     public PrefabLibrary Prefabs { get; set; } = PrefabLibrary.Empty;
+    public StampLibrary Stamps { get; set; } = StampLibrary.Empty;
+
+    // ---- tools -------------------------------------------------------------
+
+    public IReadOnlyList<ToolItem> Tools { get; } =
+    [
+        new(EditorTool.Pan, "Pan", "P"),
+        new(EditorTool.Raise, "Raise", "R"),
+        new(EditorTool.Lower, "Lower", "L"),
+        new(EditorTool.Flatten, "Flatten", "F"),
+        new(EditorTool.Smooth, "Smooth", "S"),
+        new(EditorTool.Noise, "Roughen", "N"),
+        new(EditorTool.Stamp, "Stamp", "T"),
+    ];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBrushTool), nameof(IsStampTool), nameof(IsFlattenTool), nameof(IsNoiseTool))]
+    private EditorTool _selectedTool = EditorTool.Pan;
+
+    public bool IsBrushTool => SelectedTool is EditorTool.Raise or EditorTool.Lower or EditorTool.Flatten or EditorTool.Smooth or EditorTool.Noise;
+    public bool IsStampTool => SelectedTool == EditorTool.Stamp;
+    public bool IsFlattenTool => SelectedTool == EditorTool.Flatten;
+    public bool IsNoiseTool => SelectedTool == EditorTool.Noise;
+
+    [ObservableProperty] private double _brushRadius = 60;
+    [ObservableProperty] private double _brushStrength = 0.5;
+    [ObservableProperty] private double _flattenHeight = 40;
+    [ObservableProperty] private bool _flattenLocked;
+    [ObservableProperty] private double _noiseScale = 48;
+
+    public System.Collections.ObjectModel.ObservableCollection<string> StampNames { get; } = [];
+    [ObservableProperty] private string? _selectedStamp;
+    [ObservableProperty] private double _stampSize = 512;
+    [ObservableProperty] private double _stampRotation;
+    [ObservableProperty] private double _stampStrength = 1;
+    [ObservableProperty] private bool _stampAdditive;
+    [ObservableProperty] private bool _stampWater;
+
+    partial void OnSelectedStampChanged(string? value)
+    {
+        // Lakes, rivers and ocean borders come with water by default; terrain stamps do not.
+        if (value is not null)
+            StampWater = value.StartsWith("lake", StringComparison.OrdinalIgnoreCase)
+                || value.StartsWith("river", StringComparison.OrdinalIgnoreCase)
+                || value.StartsWith("water", StringComparison.OrdinalIgnoreCase);
+    }
+
+    [ObservableProperty] private string _undoText = "Undo";
+    [ObservableProperty] private string _redoText = "Redo";
+    [ObservableProperty] private bool _canUndo;
+    [ObservableProperty] private bool _canRedo;
 
     public MapLayers Layers =>
         (ShowHillshade ? MapLayers.Hillshade : 0) |
