@@ -6,5 +6,6 @@
     <Application.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         <local:RgbToBrushConverter x:Key="RgbToBrush" />
+        <local:PreviewImageConverter x:Key="PreviewImage" />
     </Application.Resources>
 </Application>

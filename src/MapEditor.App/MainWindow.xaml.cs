@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly UndoStack _undo = new();
     private readonly TerrainToolController _tools;
+    private readonly PrefabToolController _prefabTools;
     private Task _gameDataLoad = Task.CompletedTask;
     private GameInstall? _install;
 
@@ -48,6 +49,8 @@ public partial class MainWindow : Window
 
         _tools = new TerrainToolController(Map, _vm, _undo);
         _tools.Edited += (_, _) => OnWorldEdited();
+        _prefabTools = new PrefabToolController(Map, _vm, _undo);
+        _prefabTools.Edited += (_, _) => OnWorldEdited();
         _undo.Changed += (_, _) => UpdateUndoText();
 
         Loaded += async (_, _) =>
@@ -188,6 +191,8 @@ public partial class MainWindow : Window
         _undo.Clear();
         _tools.CancelRoad();
         _tools.World = world;
+        _prefabTools.World = world;
+        _prefabTools.Refresh();
         _dirty = dirty;
         ShowWorld(world, keepView: false);
     }
@@ -364,9 +369,11 @@ public partial class MainWindow : Window
 
     // ---- undo --------------------------------------------------------------
 
-    private void Undo_CanExecute(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = _undo.CanUndo && !_tools.IsStroking && !_vm.IsBusy;
+    private void Undo_CanExecute(object sender, CanExecuteRoutedEventArgs e) =>
+        e.CanExecute = _undo.CanUndo && !_tools.IsStroking && !_prefabTools.IsDragging && !_vm.IsBusy;
 
-    private void Redo_CanExecute(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = _undo.CanRedo && !_tools.IsStroking && !_vm.IsBusy;
+    private void Redo_CanExecute(object sender, CanExecuteRoutedEventArgs e) =>
+        e.CanExecute = _undo.CanRedo && !_tools.IsStroking && !_prefabTools.IsDragging && !_vm.IsBusy;
 
     private void Undo_Executed(object sender, ExecutedRoutedEventArgs e)
     {
@@ -381,6 +388,7 @@ public partial class MainWindow : Window
     private void AfterUndoRedo(UndoStep step, string verb)
     {
         Map.InvalidateRegion(step.Bounds);
+        _prefabTools.Refresh();
         OnWorldEdited();
         _vm.Status = $"{verb} {step.Name}";
     }
@@ -412,6 +420,12 @@ public partial class MainWindow : Window
                 break;
             case nameof(MainViewModel.SelectedTool):
                 if (!_vm.IsRoadTool) _tools.CancelRoad();
+                _prefabTools.Refresh();
+                UpdateToolState();
+                break;
+            case nameof(MainViewModel.SelectedPrefabInfo):
+            case nameof(MainViewModel.PrefabRotation):
+                _prefabTools.UpdateGhost();
                 UpdateToolState();
                 break;
             case nameof(MainViewModel.RoadType):
@@ -432,9 +446,11 @@ public partial class MainWindow : Window
     private void UpdateToolState()
     {
         Map.ToolActive = _vm.SelectedTool != EditorTool.Pan;
+        Map.ShowLots = _vm.IsPrefabTool;
+        if (!_vm.IsPrefabTool) Map.HoverPrefab = null;
         Map.BrushCursor = _vm.SelectedTool switch
         {
-            EditorTool.Pan or EditorTool.Water => null,
+            EditorTool.Pan or EditorTool.Water or EditorTool.Prefab or EditorTool.Spawn => null,
             EditorTool.Road => new BrushCursor(_vm.RoadWidth),
             EditorTool.Stamp => new BrushCursor(_vm.StampSize, Square: true, _vm.StampRotation),
             _ => new BrushCursor(_vm.BrushRadius * 2, _vm.IsSquareBrush, _vm.BrushRotation),
@@ -446,6 +462,15 @@ public partial class MainWindow : Window
         base.OnPreviewKeyDown(e);
         // Leave typing in text boxes alone.
         if (e.Handled || Keyboard.FocusedElement is TextBox || Keyboard.Modifiers != ModifierKeys.None) return;
+
+        if (e.Key == Key.Escape && _prefabTools.Cancel()) { e.Handled = true; return; }
+        if (e.Key == Key.Delete && (_vm.IsPrefabTool || _vm.IsSpawnTool)) { _prefabTools.DeleteSelected(); e.Handled = true; return; }
+        if (e.Key is Key.PageUp or Key.PageDown && _vm.IsPrefabTool)
+        {
+            _prefabTools.NudgeHeight(e.Key == Key.PageUp ? 1 : -1);
+            e.Handled = true;
+            return;
+        }
 
         if (_tools.IsDrawingRoad)
         {
@@ -479,7 +504,10 @@ public partial class MainWindow : Window
 
     private void Rotate(double degrees)
     {
-        if (_vm.SelectedTool == EditorTool.Stamp) _vm.StampRotation = (_vm.StampRotation + degrees + 360) % 360;
+        // Prefabs turn a quarter at a time; positive quarter turns are counter-clockwise, so Q (-) gives +1.
+        if (_vm.IsPrefabTool) _prefabTools.Rotate(degrees < 0 ? 1 : -1);
+        else if (_vm.IsSpawnTool) _prefabTools.RotateSpawn(degrees < 0 ? -45 : 45);
+        else if (_vm.SelectedTool == EditorTool.Stamp) _vm.StampRotation = (_vm.StampRotation + degrees + 360) % 360;
         else if (_vm.HasRadius && _vm.IsSquareBrush) _vm.BrushRotation = (_vm.BrushRotation + degrees + 360) % 360;
     }
 
@@ -501,7 +529,8 @@ public partial class MainWindow : Window
         int z = world.Size - 1 - (int)Math.Floor(m.Y);
         var info = WorldQuery.At(world, x, z, _vm.Biomes, _vm.Prefabs);
         _vm.CursorText = info is null ? "" : MainViewModel.FormatPoint(info);
-        Map.HoverPrefab = _vm.ShowPrefabs && _vm.SelectedTool == EditorTool.Pan ? info?.Prefab : null;
+        Map.HoverPrefab = _vm.ShowPrefabs && (_vm.SelectedTool == EditorTool.Pan || _vm.IsPrefabTool && _vm.SelectedPrefabInfo is null)
+            ? info?.Prefab : null;
     }
 
     private void UpdateZoomText()
@@ -512,6 +541,23 @@ public partial class MainWindow : Window
     }
 
     private void Fit_Click(object sender, RoutedEventArgs e) => Map.FitToView();
+
+    // ---- prefab info card --------------------------------------------------
+
+    private void PrefabCardClose_Click(object sender, RoutedEventArgs e) => _prefabTools.Deselect();
+    private void PrefabTurnLeft_Click(object sender, RoutedEventArgs e) => WithMapFocus(() => _prefabTools.Rotate(1));
+    private void PrefabTurnRight_Click(object sender, RoutedEventArgs e) => WithMapFocus(() => _prefabTools.Rotate(-1));
+    private void PrefabRaise_Click(object sender, RoutedEventArgs e) => WithMapFocus(() => _prefabTools.NudgeHeight(1));
+    private void PrefabLower_Click(object sender, RoutedEventArgs e) => WithMapFocus(() => _prefabTools.NudgeHeight(-1));
+    private void PrefabReplace_Click(object sender, RoutedEventArgs e) => WithMapFocus(_prefabTools.ReplaceSelected);
+    private void PrefabDelete_Click(object sender, RoutedEventArgs e) => WithMapFocus(_prefabTools.DeleteSelected);
+
+    /// <summary>Card buttons act on the map selection even while a prefab is picked for placing.</summary>
+    private void WithMapFocus(Action action)
+    {
+        action();
+        Map.Focus();
+    }
 
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 

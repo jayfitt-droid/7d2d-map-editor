@@ -60,6 +60,17 @@ public sealed class EditSession(string name)
         Bounds = Bounds.Union(rect.Scale(metresPerCell));
     }
 
+    /// <summary>
+    /// Snapshots a whole list (prefabs, spawns) the first time it is touched, so adding, removing or changing
+    /// its items can be undone. <paramref name="bounds"/> (world metres) is what the change affects on the map.
+    /// </summary>
+    public void TouchList<T>(List<T> list, Func<T, T> clone, GridRect bounds) where T : class
+    {
+        var key = ((object)list, -1);
+        if (!_tiles.ContainsKey(key)) _tiles[key] = new ListSnapshot<T>(list, clone);
+        Bounds = Bounds.Union(bounds);
+    }
+
     public UndoStep ToStep() => new(Name, [.. _tiles.Values], Bounds);
 }
 
@@ -119,6 +130,30 @@ internal sealed class TileSnapshot<T> : TileSnapshot where T : unmanaged
             row.CopyTo(stored);
         }
         _grid.MarkChanged();
+    }
+}
+
+/// <summary>The items of a list before an edit; items are cloned so later changes to live items cannot reach them.</summary>
+internal sealed class ListSnapshot<T> : TileSnapshot where T : class
+{
+    private readonly List<T> _list;
+    private List<T> _items;
+
+    public ListSnapshot(List<T> list, Func<T, T> clone)
+    {
+        _list = list;
+        _items = list.Select(clone).ToList();
+    }
+
+    public override long Bytes => _items.Count * 64L;
+
+    public override void Swap()
+    {
+        // The live items are no longer in the world once swapped out, so they can be kept as they are.
+        var live = _list.ToList();
+        _list.Clear();
+        _list.AddRange(_items);
+        _items = live;
     }
 }
 

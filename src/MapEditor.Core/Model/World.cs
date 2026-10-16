@@ -26,6 +26,13 @@ public sealed class PrefabInstance
     public string Type { get; set; } = "model";
     /// <summary>Attributes we do not interpret, kept so they survive a save.</summary>
     public List<KeyValuePair<string, string>> ExtraAttributes { get; } = [];
+
+    public PrefabInstance Clone()
+    {
+        var copy = new PrefabInstance { Name = Name, Position = Position, Rotation = Rotation, Type = Type };
+        copy.ExtraAttributes.AddRange(ExtraAttributes);
+        return copy;
+    }
 }
 
 /// <summary>One &lt;spawnpoint&gt; from spawnpoints.xml, in world coords.</summary>
@@ -35,6 +42,8 @@ public sealed class SpawnPoint
     public float Y { get; set; }
     public float Z { get; set; }
     public float RotationY { get; set; }
+
+    public SpawnPoint Clone() => (SpawnPoint)MemberwiseClone();
 }
 
 /// <summary>Top-down RGBA8 pixels, exactly as decoded from a PNG.</summary>

@@ -26,3 +26,9 @@ public sealed record RoadPreview(IReadOnlyList<Point> MapPoints, double WidthMet
 
 /// <summary>Outline shown under the mouse: a circle (brushes) or a rotated square (stamps).</summary>
 public sealed record BrushCursor(double SizeMetres, bool Square = false, double RotationDegrees = 0);
+
+/// <summary>
+/// A prefab about to be placed or moved: its footprint in map coordinates, the way its front faces
+/// (0 north, 1 west, 2 south, 3 east; -1 unknown), whether it has warnings, and the lot it snaps into.
+/// </summary>
+public sealed record PrefabGhost(Rect MapRect, int Front, bool Warning, Rect? Lot = null, bool LotFits = true);

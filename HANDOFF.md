@@ -1,130 +1,147 @@
 # Handoff: 7 Days to Die Map Editor
 
-Last updated 2026-10-16, at tag `v0.1.1` (commit `bdacad4`) on `main`. There's no git remote, so nothing has been pushed.
+Last updated 2026-10-16. The last commit is `779e537` (tag `v0.1.1` is at `bdacad4`) on `main`. **All of milestone 7 is uncommitted** (see the file list below). There's no git remote.
 
 ## Goal
 
-This is a Windows desktop app for building 7 Days to Die (v3.3) worlds. It can edit an existing world or author one from scratch, and it writes a world folder the game loads directly. It does not use the in-game generator (RWG) or the biome-brush mod.
+This is a Windows desktop app (C# + WPF on .NET 10, CommunityToolkit.Mvvm, xUnit) for building 7 Days to Die (v3.3) worlds. It can edit an existing world or author one from scratch, and it writes a world folder the game loads directly. It does not use the in-game generator (RWG) or the biome-brush mod.
 
-Decisions made with the user:
-- **Public release.** Never bundle game assets. Read stamps, prefabs and `biomes.xml` from the user's game install at runtime. Reimplement game behaviour from `docs/RWG-Research.md` and the decompiled code; never copy decompiled code in.
-- **C# + WPF on .NET 10** (SDK pinned in `global.json`), CommunityToolkit.Mvvm and xUnit.
-- **Independent of biome-brush.**
-- **v1 does both:** editing existing worlds and authoring new ones.
+Rules agreed with the user:
+- **Public release:** never bundle game assets. Read stamps, prefabs, `biomes.xml` and `rwgmixer.xml` from the user's install at runtime. Reimplement behaviour from the decompiled code; never copy it in.
+- **The plan:** `PLAN.md` in the repo (a copy of `C:\Users\Jason\.claude\plans\glittery-munching-pudding.md`) has 8 milestones. M1–M6 are done. **M7 (POIs and spawns) is in progress.** M8 covers the `.7dmap` format, validation, the export dialog, the installer and the release.
 
-The approved plan is `C:\Users\Jason\.claude\plans\glittery-munching-pudding.md`. It has 8 milestones:
-
-1. Scaffold. Done.
-2. World file I/O and round-trip. Done.
-3. Viewer. Done; tagged v0.1.0.
-4. New World and terrain tools. Done.
-5. Paint layers. Done.
-6. Roads. Done; tagged v0.1.1.
-7. **POIs and spawns.** This is next.
-8. `.7dmap` project format, validation, export dialog, Velopack installer, release.
+**How the user works:** they try each change in the app, then in a new game, and report back. **Commit only when they ask.** Never add `Co-Authored-By` or other attribution lines to commit messages. Use the task-list and wrap-up tools, and keep replies short.
 
 ## Current State
 
-- Milestones 1–6 are done and committed. All 48 tests pass (`dotnet test`).
-- The user has checked every milestone in game, most recently in a new game on the world **JasonTest**. The roads and the lake causeway look right.
-- Brush shapes (circle or square, rotation, smooth/linear/hard edge) were added between M5 and M6 at the user's request.
+M7 so far, all built, with 65 tests passing:
+- **Done and checked in game by the user:**
+  - The Prefabs tool (I): a browser, placing, moving, rotating, deleting, lot snapping, street tiles and parts.
+  - The Spawn points tool (H).
+  - The user's test, on world "poi edit test", worked: houses swapped around the spawn, plus a new street tile with a bowling alley. The game log has no errors.
+- **Done, but the user hasn't confirmed them in game:**
+  - The info card for a selected prefab: preview, Q/E turns, PgUp/PgDn height nudge, "Replace with picked", and Delete.
+  - Haloed outlines and tints, plus a "Dim the map" layer option.
+  - Traders drawn in magenta.
+  - POIs carry their own parts when moved or deleted.
+- **In progress: the town generator.** Only the data layer exists so far: `RwgMixer.cs` and the new prefab fields. There is no generator, tool or UI yet.
+- There's a stray `HANDOFF - Copy.md` that the user made; leave it alone.
 
-**How the user works:** they try each change in the app, then in game, and report back. **Commit only when they ask**, and they usually ask after an in-game check. Never add `Co-Authored-By` or other attribution lines to commit messages. Use the task list and wrap-up tools, and keep replies short.
-
-## Active/Touched Files
+## Active/Touched Files (this session)
 
 All paths are relative to `C:\Users\Jason\Projects\7d2d\MapEditor`.
 
-**Core** (`src/MapEditor.Core`, no UI):
-- `Model/World.cs` and `Model/Grid.cs`: rasters keep row 0 at the **south** edge, with index `x + z*Width`. Heights are uint16 metres × 257. `Grid.Version` stays 0 while a layer is "as loaded", which is how unchanged layers are written back byte-for-byte.
-- `IO/WorldReader.cs`, `IO/WorldWriter.cs`, `IO/LayerImages.cs`, `IO/Png.cs` (the project's own PNG codec), `IO/LevelFile.cs` (`main.ttw` template plus a new GUID), `IO/WorldXml.cs`.
-- `GameData/GameInstall.cs`: finds the Steam install. It also has `UserGeneratedWorldsDir`, `UserSavesDir`, and `SavedGamesOn(world)`, which is new in M6.
-- `GameData/BiomeTable.cs`, `PrefabLibrary.cs`, `StampLibrary.cs`.
-- `Edit/UndoStack.cs`: `EditSession.Touch(grid, rect, metresPerCell)` snapshots 64×64 tiles before each change, and `UndoStack` has a 1 GB budget.
-- `Ops/TerrainBrush.cs`: `BrushShape`, `BrushFalloff`, `BrushTip` (shared by all radius tools) and `BrushSettings`.
-- `Ops/StampOp.cs`, `Ops/NewWorldGenerator.cs`, `Ops/SpawnHelper.cs`, `Ops/Noise.cs`.
-- `Ops/LayerPaint.cs` (M5): biome painting at W/8 grows the palette when needed, and radiation painting at W/32 writes R=255.
-- `Ops/WaterFill.cs` (M5): `Fill` floods connected ground below the surface and adds a one-cell shoreline. `Drain` removes only water at the clicked surface level.
-- `Ops/RoadOp.cs` (M6):
-  - `RoadPath(Points, Type, Radius, Grade)`.
-  - `Centreline` resamples every 4 m and rounds corners (about 30 m for asphalt, 15 m for gravel).
-  - `HeightProfile` smooths the height along the road and carries the road across water as a causeway from bank to bank, at least 1 m above the surface.
-  - `Draw` rasterises the road and grades the terrain with a t² blend over 10 m (asphalt) or 6 m (gravel). Asphalt from 8 m wide gets a 1 m gravel shoulder, and gravel never overwrites asphalt.
-  - `Erase` removes road pixels only.
-- `Rendering/MapRenderer.cs`: mip tiles. Biome display colours rebuild when the palette grows.
+**Core:**
+- `src/MapEditor.Core/GameData/PrefabLibrary.cs`:
+  - `PrefabMarker` (with `TurnedOnce`, which turns counter-clockwise: (x, z) → (size.z - z, x)).
+  - `PrefabInfo`, with `Markers`, `Zoning`, `TraderArea`/`IsTrader`, `ThemeTags`, `ThemeRepeatDistance`, `DuplicateRepeatDistance`, `DensityScore` (from `Stats.TotalVertices`), `IsStreetTile`, `IsPart`, `IsInternal`, `District`, `RotatedMarkers(rot)` and `FrontDirection(rot)` (0 N, 1 W, 2 S, 3 E).
+  - `PrefabLibrary.Of(...)` (for tests).
+- `src/MapEditor.Core/GameData/RwgMixer.cs` (**new, not used yet**):
+  - `TownshipType`: biomes, spawn_trader, spawn_gateway, outskirt district/percent, and the `Tiles` range for the world-size section.
+  - `DistrictType`: tag, prefab_name + "_", weight, required townships, avoided neighbours, custom sizes, preview colour, `Kind` and `SpawnOrder`.
+  - `TileCounts`, `TileMaxDensity`, `SpawnAdjusts` and `BuildableTownships`.
+- `src/MapEditor.Core/Ops/PrefabPlacer.cs` (new):
+  - `PrefabSpot`, `LotSnap`.
+  - `PrefabY` and `GroundUnder`.
+  - `MedianGround`, `Flatten` (smoothstep blend), `SpotAt` (street tiles snap to the 150 m grid and take a neighbour's height; POIs snap into lots), `FindLot` (smallest lot that fits), `Check` (warnings).
+  - `Place`, `Contents` (a tile's POIs and parts, or a POI's parts), `Move` (carries and turns contents), `Delete`, `Replace` and `MarkerParts`.
+- `src/MapEditor.Core/Ops/SpawnHelper.cs`: `StandingHeight` (ceil(ground) + 1), `Near`, `Add`, `Move`, `Rotate`, `Delete`.
+- `src/MapEditor.Core/Edit/UndoStack.cs`: `EditSession.TouchList` and `ListSnapshot<T>`, which snapshot the prefab and spawn lists for undo.
+- `src/MapEditor.Core/Model/World.cs`: `PrefabInstance.Clone()`, `SpawnPoint.Clone()`.
 
-**App** (`src/MapEditor.App`, WPF):
-- `MainWindow.xaml(.cs)`: menus, the tool panel, saving (`SaveAsync`, `WarnAboutExistingGames`), the unsaved-changes prompts, and keyboard shortcuts in `OnPreviewKeyDown`.
-- `MainViewModel.cs`: all tool settings.
-- `Editing/EditorTool.cs` and `Editing/TerrainToolController.cs`: turn map input into edits, with one undo step per stroke. They also handle road point editing (`FinishRoad`, `CancelRoad`, `UndoRoadPoint`).
-- `Map/MapView.cs`: pan and zoom, tile workers, the brush cursor, the road preview, prefab outlines (drawn by `OverlayRaster`) and spawns.
-- `Map/ToolInput.cs`: `ToolInputEventArgs` (with `ClickCount`), `BrushCursor` and `RoadPreview`.
-- `NewWorldDialog`, `SaveWorldDialog`, `RgbToBrushConverter.cs`, `AppSettings.cs` (stored in `%APPDATA%\7D2DMapEditor\settings.json`).
+**App:**
+- `src/MapEditor.App/Editing/PrefabToolController.cs` (new): the Prefabs and Spawn tool input, ghost, selection, `ReplaceSelected`, `NudgeHeight`, `Rotate`, `RotateSpawn`, `DeleteSelected`, `Cancel`, `Deselect` and `Refresh` (called after undo/redo, a tool change or a new world).
+- `src/MapEditor.App/Editing/TerrainToolController.cs`: ignores the Prefab and Spawn tools.
+- `src/MapEditor.App/Editing/EditorTool.cs`: adds `Prefab` and `Spawn`.
+- `src/MapEditor.App/MainViewModel.cs`:
+  - Browser filters (category, tier, lot size, search) and `PrefabResults`.
+  - `SelectedPrefabInfo` (the "armed" prefab), `PrefabRotation`, `PrefabFlatten`, `PrefabAddParts`.
+  - `SelectionText` (card or spawn panel) and `PlacementText` (ghost).
+  - `SelectedMapPrefab`, `ShowPrefabCard`, `CanReplace`/`ReplaceLabel`, `DimMap`.
+- `src/MapEditor.App/MainWindow.xaml(.cs)`: the prefab and spawn panels, the info card over the map, Dim checkbox, card button handlers, keys (Q/E, Delete, Esc, PgUp/PgDn), and wiring to `_prefabTools`.
+- `src/MapEditor.App/Map/MapView.cs`:
+  - `PrefabGhost`, `SelectedPrefab`, `SelectedSpawn`, `ShowLots`, `DimMap`.
+  - Prefab drawing in this order: tiles, lots, POIs, parts, then traders.
+  - `FootprintMapRect` and `DrawFrontArrow`.
+  - Spawn facing tick.
+- `src/MapEditor.App/Map/OverlayRaster.cs`: `Fill` and `Outline(rect, colour, halo)`.
+- `src/MapEditor.App/Map/ToolInput.cs`: the `PrefabGhost` record.
+- `src/MapEditor.App/PreviewImageConverter.cs` (new, keyed `PreviewImage` in `App.xaml`).
 
-**Tests** (`tests/MapEditor.Core.Tests`): `WorldIoTests`, `PngTests`, `MapRendererTests`, `EditingTests`, `PaintTests` and `RoadTests`.
+**Tests:** `tests/MapEditor.Core.Tests/PrefabTests.cs` (new, 17 tests).
 
-**CLI** (`src/MapEditor.Cli/Program.cs`) has five commands: `info`, `roundtrip`, `installs`, `render` and `new`.
+**Docs:** `docs/RWG-Research.md`, line 22: prefab y and rotation facts.
 
-**Docs:** `docs/RWG-Research.md` covers the file formats, the RWG pipeline and what has been verified in game.
+## Changes Made (key facts, verified)
 
-## Changes Made (by milestone)
-
-- **M1–2:** the solution scaffold, CI, the PNG codec, and world read/write that round-trips exactly.
-- **M3:** the tiled mip-map viewer with hillshade, layer toggles, cursor readout and minimap.
-- **M4:**
-  - A New World dialog (size, noise, biome, and land or water edges using the game's border stamps).
-  - Raise, Lower, Flatten, Smooth and Roughen brushes, and a Stamp tool.
-  - Undo/redo, heightmap import/export, and Save As with a new `main.ttw` GUID.
-  - A spawn point is added automatically if the world has none.
-- **M5:** paint biome (B), paint radiation (D; Shift erases) and water fill (W; Shift+click drains, Ctrl+click samples a level).
-- **Brush tips:** circle or square with Q/E rotation, and an Edge option (Smooth, Linear or Hard) for the terrain brushes.
-- **M6:**
-  - The Road tool (O): click to add points; double-click or Enter finishes, Backspace removes the last point, Esc cancels, and Shift+drag erases.
-  - Asphalt or Gravel surface, a width slider (RWG defaults are 18 m and 9 m), and an optional grading checkbox.
-- **Fixes in v0.1.1:**
-  - Choosing not to save on exit no longer crashes. The window now closes through `Dispatcher.BeginInvoke(Close)` instead of calling `Close()` inside the Closing event.
-  - Saving warns when the game already has saved games on that world.
+- **Prefab y in dtm.raw terms is ground + 1 + YOffset.** RWG writes `dtm.raw` 1 m below its internal heights (`HeightMapUtils.SaveHeightMapRAW(stream, data, -1f)`). Checked exactly on 240 wilderness POIs in "Mezawoku Mountains" (v3.3).
+- **Wilderness placement:** RWG sets the footprint to the median of the rounded-up heights, then blends back over 18 m with a smoothstep (`StreetTile.SmoothTerrainRect`). Street tiles blend over 50 m (2 streets or fewer) or 110 m.
+- **What the game does on load:** `DynamicPrefabDecorator.copyPrefabsIntoHeightMap` copies the prefab's own terrain into the heightmap. With `RandomGeneratedWorld=true` (which new worlds set), it overwrites; otherwise it only raises.
+- **Rotation:** each step is a quarter turn counter-clockwise seen from above. The front faces north when rotation == RotationToFaceNorth.
+- **Lot snapping** reproduces `StreetTile.SpawnMarkerPartsAndPrefabs`:
+  - Rotation = tile rotation + RotationToFaceNorth + marker rotations.
+  - The POI is pushed toward the lot's street side, using the switch on marker.Rotations.
+  - y = tile.y + marker.y + YOffset.
+- **Parts:** one per marker group, weighted by chance. Marker rotations 1 and 3 are swapped, there's no YOffset, and tags are filtered by district ("wilderness" outside towns).
+- **Check against RWG:** lot snapping and parts match 100% on Mezawoku: 5,526 lot POIs and 5,563 parts.
+- **Scratch scripts:** `lotcheck.cs` and `wildcheck.cs` are .NET file-based scripts in the session scratchpad (`C:\Users\Jason\AppData\Local\Temp\claude\C--Users-Jason-Projects-7d2d-MapEditor\8f2dd0dc-...\scratchpad\`). They may be gone. Rewrite them with `#:project src\MapEditor.Core\MapEditor.Core.csproj` if needed.
 
 ## Failed Attempts & Gotchas
 
-- **Saved games keep their chunks.** Saves in `%APPDATA%\7DaysToDie\Saves\<world>\<game>\Region` hold every chunk generated so far. After editing a world, the user must start a **new game** to see the edits there; a reused save mixes old terrain, plants and water with the new world. The editor now warns about this on save.
-- **"All Ores in All Biomes by FNS" mod:** it caused `NullReferenceException` errors in `DecorateChunkOverlapping` at `Prefab.CopyIntoLocal` (in the decoration rock and ore-vein prefabs). The errors stopped once the user removed the mod. The flat ground in editor worlds made the errors more frequent. A possible follow-up is adding fine noise to the New World defaults; it isn't done.
-- **Old versions:** a world whose `map_info.xml` has a `GameVersion` from a different major version makes the game warn that it's an old map. New worlds leave `GameVersion` out.
-- **Empty `spawnpoints.xml`:** the game has no fallback spawn. `SpawnHelper.EnsureOne` runs on every save to cover this.
-- **Game stamps:** their height channel is constant (255 to raise, 0 to carve) and the shape is in alpha. `water_border` has no water channel, so alpha is used as the water mask.
-- **Road heights over water:** sampling the lake bed, or even clamping to 1 m above the water before smoothing, cut trenches into the approaches. The fix is to interpolate the road deck between the bank heights across wet stretches, then smooth while holding the minimum height on every pass.
-- **Square brush rotation:** it must be clockwise on the north-up map, matching `StampOp` and the cursor's `RotateTransform`. A 45° test can't catch a sign error, so test with an asymmetric angle.
-- **WPF drawing:** a single `StreamGeometry` with thousands of tiny rectangles draws stray spikes on the GPU. Prefab outlines are rasterised in software (`OverlayRaster`) because of this. The F12 snapshot doesn't show these GPU-only artifacts.
-- **Build locks:** a running `MapEditor.exe` locks `bin/`, so the build fails. Never kill the user's editor, because it may have unsaved work. To check that the code compiles, build with `-p:OutDir=<scratch>`, or ask the user to close it.
-- **Shell:** inline Python heredocs in Bash sometimes fail with "unexpected EOF". Write the script to the scratchpad and run it with `python -I <file>`. Windows Python can't open `/d/...` paths; use `D:\...`.
-- **Visual testing (computer use):**
-  - Request access to "MapEditor.exe" with `systemKeyCombos`.
-  - An always-on-top window covers the M28U monitor, so move the editor with Win+Shift+Right to "LG ULTRAGEAR" and `switch_display` to it.
-  - Message boxes can appear behind the masked window.
-  - `left_click_drag` sends no intermediate moves; use `left_mouse_down`, then `mouse_move` steps, then `left_mouse_up`.
-  - Don't drive the screen while the user is playing the game.
-- **Headless checks:** a .NET 10 file-based script with `#:project <path to MapEditor.Core.csproj>` can build a world, apply operations and render PNGs with `MapRenderer`, without the UI. An example is in the session scratchpad as `roadcheck.cs`.
-
-**Locations:**
-- Game logs: `%APPDATA%\7DaysToDie\logs\output_log_client__*.txt`.
-- Editor crash log: `%APPDATA%\7D2DMapEditor\crash.log`.
-- The user plays on the Steam install at `D:\Games\Steam\steamapps\common\7 Days To Die`, with mods in `%APPDATA%\7DaysToDie\Mods`.
-- The decompiled DLLs are in `D:\dotPeek Test\Assembly-CSharp`; RWG is under `WorldGenerationEngineFinal/`.
-- The dev install is `C:\7D2D\Custom\v3.3`.
-- `ilspycmd` is installed if you need IL offsets.
+- **Old worlds:** worlds made in Alpha 21 ("Vafuru Valley", "Zezepexe County") have different YOffsets. Validate only against v3.x worlds such as **Mezawoku Mountains** (V.3.30.18). Govosare Valley is v3.2, and its parts differ.
+- **Overlapping lots:** street tiles offer overlapping alternative lots of different sizes. Picking the first match gave the wrong lot, so `FindLot` picks the smallest lot that fits.
+- **Build locks:** a running `MapEditor.exe` locks `bin/`. **Never kill the user's editor** (it may hold unsaved work; once it was open on Mezawoku with changes). Build with `-p:OutDir=<scratchpad>\appbuild\` instead. Check first with `tasklist //V //FI "IMAGENAME eq MapEditor.exe"`.
+- **Shell:** inline `python - <<'EOF'` heredocs sometimes fail with "unexpected EOF". Write the script to the scratchpad and run it with `python -I <file>`. Use `D:\...` paths for Windows Python.
+- **Computer use:**
+  - Call `request_access` with "MapEditor.exe" only after the app is running.
+  - The grant can drop; re-request it, then `open_application("Mapeditor")`.
+  - The window showed fully on M28U this time.
+  - Use `left_mouse_down`, `mouse_move` steps and `left_mouse_up` for drags.
+  - Don't drive the screen while the user is using the editor or playing.
+- **Saved games:** they keep generated chunks, so in-game tests need a **new game**.
 
 ## Next Steps
 
-1. **Start milestone 7: POIs and spawns.** Do it when the user asks, and confirm the scope with them first.
-   - A prefab browser using `PrefabLibrary`: filter by tags, difficulty tier and size, and show the preview `.jpg`.
-   - Placing, rotating, moving and deleting `PrefabInstance`s. Position is the bounding-box min corner in centred world coordinates, and rotation is 0–3. Use `PrefabInfo.Footprint(rotation)`.
-   - Footprint flattening with a feathered edge. Y is the median ground height plus the prefab's `YOffset`. Read the decompiled `CopyWorldPrefabHeightsIntoHeightMap` (game load) and RWG `PrefabManager`/`POISmoother` first, to see how much flattening the game already does.
-   - Warnings for overlaps, water and steep slopes.
-   - A spawn point tool to add, move and delete spawns.
-   - Street-tile (`rwg_tile_*`) placement for hand-built towns.
-2. Keep each piece testable in game: save to `%APPDATA%\7DaysToDie\GeneratedWorlds`, start a **new game**, and check the log for errors.
-3. Later (milestone 8): the `.7dmap` project format, which keeps roads as editable polylines (today they're baked to raster on finish). Also autosave, a validation panel, an Export dialog with a `GameVersion` option, a Velopack installer, and a check of the game EULA before release.
-4. Optional ideas the user hasn't asked for:
-   - Fine default roughness for New World terrain.
-   - Lower memory when opening 8k worlds (about 1.2 GB today, from the temporary RGBA decode).
-   - Keeping water for worlds that only ship `splat4_processed.png`.
+1. **Ask the user** whether to commit M7 so far; they test before committing. Also mention the unconfirmed items under Current State.
+2. **Build the town generator** (`src/MapEditor.Core/Ops/TownGenerator.cs`, plus a "Town" tool, shortcut G). The user chose:
+   - Pick the town type from the game's townships, defaulting by biome and by size against `TownshipType.Tiles`.
+   - Preview, then reroll, then accept as one undo step.
+   - Connect the town's exits to the nearest road.
+   - Replace existing prefabs in the selection.
+   - Flatten to one level.
+   - They did not ask to force a trader, so keep RWG's own behaviour.
+3. **The algorithm to port** (decompiled code in `D:\dotPeek Test\Assembly-CSharp\WorldGenerationEngineFinal\`):
+   - **Cells:** the 150 m grid cells fully inside the selection, grid origin at the south-west corner, cell (cx, cz) at grid metres (cx·150, cz·150). Leave out cells under water, and cells with existing prefabs unless replacing.
+   - **Core and ring:** core = cells whose 8 neighbours are all selected; the ring is kept for outskirts and gateways. If the core is empty, core = all cells.
+   - **Outskirts** (`TownPlanner.Grow`): 4-way neighbours of the core (8-way if percent ≥ 1), thinned by the loop over (1 - percent). They get the township's outskirt district and go into Streets first.
+   - **Districts** (`DistrictPlanner.GenerateDistricts`):
+     - Use districts whose required_township includes the town and whose weight is above 0. Normalise the weights, and make avoided neighbours symmetric.
+     - Order by SpawnOrder, highest first.
+     - Sort tiles by distance to the centre tile's centre + (5, 0). Each district takes `round(count × weight)` tiles (banker's rounding); the last district takes the rest.
+     - Use `FindFreeWithNeighbor` and `HasAvoidNeighbor`. Drop tiles left without a district.
+   - **Gateways** (`GenerateGatewayDir`, ×2 for citybig): from ring cells. The candidate needs exactly one town neighbour and at least 2 valid neighbours. Roadside townships are gateways only.
+   - **Exits** (`TownPlanner.Plan`, lines 198–225):
+     - Start with exits to town neighbours.
+     - Remove exits between different districts while `CountDistrictExitsBetween` > (downtown ? 2 : 1).
+     - Run `ChangeLConnectionToCap` once per district kind.
+     - Bits: 0 N, 1 E, 2 S, 3 W.
+   - **Shapes** (`StreetTileShared`): exits {5, 7, 15, 4, 6} map to straight, t, intersection, cap, corner. Each rotation shifts the bits clockwise.
+     - The tile name is `rwg_tile_` + district.PrefabName + shape. Pick at random among library prefabs with that prefix, respecting `TileCounts` max.
+     - Prefab rotation = (base rotations + RTFN) & 3, then swap 1 and 3.
+   - **Height** (`Township.CalcCenterStreetTile`): dtm ground = ceil(average of the 9 samples at the centre tile's centre ±50 m) + 3. Skip RWG's +25 snow and +12 wasteland bonuses. Tile y = `PrefabY(tile, ground)`.
+   - **Filling lots** (`StreetTile.SpawnMarkerPartsAndPrefabs`, recursive to depth 5):
+     - Sort POI lots by size, largest first. Take groups in order, shuffle each, and place **one POI per group**.
+     - Lot size limits: custom sizes go from the previous `MarkerSizes` entry + 1 up to the lot size (MarkerSizes: 1, 25, 42, 60, 100). Otherwise the POI must match the lot exactly.
+     - The density budget starts at `TileMaxDensity` (default 62) and drops for dense prefabs within 190 m.
+   - **Choosing a POI** (`PrefabManager.GetPrefabWithDistrict`, shuffled by seed):
+     - It must have all the district tags, any of the marker tags, or no "has" tag when the marker has none. Its density must fit the budget, and `isSizeValid` must pass.
+     - Theme repeat checks apply (trader distances are divided by WorldSizeDistDiv: 1 for worlds over 4500), and so do name repeats (× scale).
+     - Score with `getScoreForPrefab`: SpawnAdjusts, tier / 5, and division by world use count + 1.
+     - If nothing fits, retry with the budget + 8 at scale 0.3, then 18 at scale 0. Add parts with `MarkerParts`.
+   - **Apply:** remove the old prefabs, flatten each tile to the ground (blend 50 or 110 m), add the new prefabs, then draw the road links with `RoadOp.Draw`. Exit points come from `HighwayExitFromDir`. Search `world.Roads` for the nearest road within about 2 km. Use asphalt for town, city and citybig, gravel otherwise.
+   - **UI:**
+     - Drag a selection rectangle.
+     - Panel: township combo, seed with a Reroll button, checkboxes, and Accept (Enter) or Cancel (Esc).
+     - Preview: tiles tinted by district `PreviewColour`, POI outlines and road lines.
+   - **Tests:** add unit tests, then compare district and tile choices with Mezawoku.
+4. Then finish M7 (validation is in M8). Update `HANDOFF.md` and `docs/RWG-Research.md`.

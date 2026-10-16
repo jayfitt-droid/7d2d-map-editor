@@ -41,6 +41,41 @@ public sealed class OverlayRaster
         return a << 24 | (uint)(c.R * a / 255) << 16 | (uint)(c.G * a / 255) << 8 | (uint)(c.B * a / 255);
     }
 
+    /// <summary>Fills a rectangle given in DIPs, replacing what is under it.</summary>
+    public void Fill(Rect dips, uint colour)
+    {
+        int x0 = ToPixel(dips.Left), y0 = ToPixel(dips.Top), x1 = ToPixel(dips.Right), y1 = ToPixel(dips.Bottom);
+        if (x1 - x0 < 3 || y1 - y0 < 3) return;
+        FillClipped(x0, y0, x1, y1, colour);
+    }
+
+    /// <summary>
+    /// An outline with a one-pixel <paramref name="halo"/> either side of it, so a light line still shows on light
+    /// ground and a dark one on dark ground.
+    /// </summary>
+    public void Outline(Rect dips, uint colour, uint halo)
+    {
+        int x0 = ToPixel(dips.Left), y0 = ToPixel(dips.Top), x1 = ToPixel(dips.Right), y1 = ToPixel(dips.Bottom);
+        if (x1 - x0 >= 4 && y1 - y0 >= 4)
+        {
+            Ring(x0 - 1, y0 - 1, x1 + 1, y1 + 1, halo);
+            Ring(x0 + 1, y0 + 1, x1 - 1, y1 - 1, halo);
+        }
+        else
+        {
+            FillClipped(x0 - 1, y0 - 1, x0 + 3, y0 + 3, halo);
+        }
+        Outline(dips, colour);
+    }
+
+    private void Ring(int x0, int y0, int x1, int y1, uint colour)
+    {
+        FillClipped(x0, y0, x1, y0 + 1, colour);
+        FillClipped(x0, y1 - 1, x1, y1, colour);
+        FillClipped(x0, y0, x0 + 1, y1, colour);
+        FillClipped(x1 - 1, y0, x1, y1, colour);
+    }
+
     /// <summary>Draws a one-device-pixel outline of a rectangle given in DIPs; tiny rectangles become 2x2 dots.</summary>
     public void Outline(Rect dips, uint colour)
     {

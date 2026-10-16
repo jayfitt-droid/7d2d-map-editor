@@ -13,6 +13,8 @@ public enum EditorTool
     Radiation,
     Water,
     Road,
+    Prefab,
+    Spawn,
 }
 
 /// <summary>A tool as listed in the tool panel, with its keyboard shortcut.</summary>

@@ -41,13 +41,31 @@ public sealed class MapView : FrameworkElement
     private Point? _mouseMap;
 
     // Prefab outlines are drawn in software (see OverlayRaster); colours are premultiplied BGRA.
-    private static readonly uint PrefabColour = OverlayRaster.Premultiply(Color.FromArgb(220, 255, 160, 40));
-    private static readonly uint StreetTileColour = OverlayRaster.Premultiply(Color.FromArgb(70, 255, 255, 255));
+    // Every outline gets a dark halo and every footprint a light tint, so they read on any biome colour.
+    private static readonly uint PrefabColour = OverlayRaster.Premultiply(Color.FromArgb(255, 255, 170, 40));
+    private static readonly uint PrefabTint = OverlayRaster.Premultiply(Color.FromArgb(70, 255, 170, 40));
+    private static readonly uint PartColour = OverlayRaster.Premultiply(Color.FromArgb(200, 255, 230, 150));
+    private static readonly uint StreetTileColour = OverlayRaster.Premultiply(Color.FromArgb(230, 235, 235, 245));
+    private static readonly uint StreetTileTint = OverlayRaster.Premultiply(Color.FromArgb(45, 20, 20, 30));
+    private static readonly uint TraderColour = OverlayRaster.Premultiply(Color.FromArgb(255, 235, 80, 255));
+    private static readonly uint TraderTint = OverlayRaster.Premultiply(Color.FromArgb(110, 235, 80, 255));
+    private static readonly uint HaloColour = OverlayRaster.Premultiply(Color.FromArgb(170, 0, 0, 0));
+    private static readonly Brush DimBrush = Frozen(new SolidColorBrush(Color.FromArgb(120, 0, 0, 0)));
     private readonly OverlayRaster _overlay = new();
+    private static readonly uint LotColour = OverlayRaster.Premultiply(Color.FromArgb(150, 120, 200, 255));
     private static readonly Pen HoverPen = Frozen(new Pen(Brushes.White, 2));
+    private static readonly Pen SelectedPen = Frozen(new Pen(new SolidColorBrush(Color.FromRgb(80, 220, 255)), 2.5));
+    private static readonly Brush SelectedFill = Frozen(new SolidColorBrush(Color.FromArgb(40, 80, 220, 255)));
+    private static readonly Pen GhostPen = Frozen(new Pen(new SolidColorBrush(Color.FromRgb(120, 255, 140)), 2));
+    private static readonly Brush GhostFill = Frozen(new SolidColorBrush(Color.FromArgb(60, 120, 255, 140)));
+    private static readonly Pen GhostWarnPen = Frozen(new Pen(new SolidColorBrush(Color.FromRgb(255, 90, 80)), 2));
+    private static readonly Brush GhostWarnFill = Frozen(new SolidColorBrush(Color.FromArgb(60, 255, 90, 80)));
+    private static readonly Pen LotPen = Frozen(new Pen(new SolidColorBrush(Color.FromRgb(120, 200, 255)), 2) { DashStyle = DashStyles.Dash });
+    private static readonly Brush SelectedSpawnFill = Frozen(new SolidColorBrush(Color.FromRgb(80, 220, 255)));
     private static readonly Brush HoverFill = Frozen(new SolidColorBrush(Color.FromArgb(50, 255, 255, 255)));
     private static readonly Brush SpawnFill = Frozen(new SolidColorBrush(Color.FromRgb(60, 220, 90)));
     private static readonly Pen SpawnPen = Frozen(new Pen(Brushes.Black, 1));
+    private static readonly Pen SpawnFacingPen = Frozen(new Pen(Brushes.White, 2.5) { EndLineCap = PenLineCap.Triangle });
     private static readonly Brush Background = Frozen(new SolidColorBrush(Color.FromRgb(24, 25, 28)));
     private static readonly Pen CursorPen = Frozen(new Pen(Brushes.White, 1.5));
     private static readonly Pen CursorShadowPen = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(140, 0, 0, 0)), 3.5));
@@ -144,6 +162,17 @@ public sealed class MapView : FrameworkElement
         nameof(ShowPrefabs), typeof(bool), typeof(MapView),
         new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    /// <summary>Darkens the map under the prefab and spawn overlays so they stand out.</summary>
+    public bool DimMap
+    {
+        get => (bool)GetValue(DimMapProperty);
+        set => SetValue(DimMapProperty, value);
+    }
+
+    public static readonly DependencyProperty DimMapProperty = DependencyProperty.Register(
+        nameof(DimMap), typeof(bool), typeof(MapView),
+        new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender));
+
     public bool ShowSpawns
     {
         get => (bool)GetValue(ShowSpawnsProperty);
@@ -153,6 +182,56 @@ public sealed class MapView : FrameworkElement
     public static readonly DependencyProperty ShowSpawnsProperty = DependencyProperty.Register(
         nameof(ShowSpawns), typeof(bool), typeof(MapView),
         new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    private PrefabGhost? _prefabGhost;
+
+    /// <summary>The prefab the Prefabs tool is about to place or drop.</summary>
+    public PrefabGhost? PrefabGhost
+    {
+        get => _prefabGhost;
+        set
+        {
+            _prefabGhost = value;
+            InvalidateVisual();
+        }
+    }
+
+    private PrefabInstance? _selectedPrefab;
+
+    public PrefabInstance? SelectedPrefab
+    {
+        get => _selectedPrefab;
+        set
+        {
+            _selectedPrefab = value;
+            InvalidateVisual();
+        }
+    }
+
+    private SpawnPoint? _selectedSpawn;
+
+    public SpawnPoint? SelectedSpawn
+    {
+        get => _selectedSpawn;
+        set
+        {
+            _selectedSpawn = value;
+            InvalidateVisual();
+        }
+    }
+
+    private bool _showLots;
+
+    /// <summary>Outlines the POI lots of street tiles, so POIs can be dropped into them.</summary>
+    public bool ShowLots
+    {
+        get => _showLots;
+        set
+        {
+            _showLots = value;
+            InvalidateVisual();
+        }
+    }
 
     private PrefabInstance? _hoverPrefab;
 
@@ -272,7 +351,7 @@ public sealed class MapView : FrameworkElement
         var map = ScreenToMap(p);
         if (_toolDrag) ToolInput?.Invoke(this, new ToolInputEventArgs(ToolPhase.Move, map, Keyboard.Modifiers));
         _mouseMap = map;
-        if (_brushCursor is not null || _roadPreview is not null) InvalidateVisual();
+        if (_brushCursor is not null || _roadPreview is not null || _prefabGhost is not null) InvalidateVisual();
         CursorMoved?.Invoke(this, map);
     }
 
@@ -355,8 +434,10 @@ public sealed class MapView : FrameworkElement
                 DrawFallback(dc, key, rect, top, dpi);
             }
 
+        if (DimMap) dc.DrawRectangle(DimBrush, null, new Rect(RenderSize));
         if (ShowPrefabs) DrawPrefabs(dc, visible);
         if (ShowSpawns) DrawSpawns(dc, visible);
+        DrawPrefabGhost(dc);
         DrawRoadPreview(dc);
         DrawBrushCursor(dc);
     }
@@ -468,25 +549,109 @@ public sealed class MapView : FrameworkElement
         var world = _renderer!.World;
         int half = world.Size / 2;
         _overlay.Begin(ActualWidth, ActualHeight, PixelsPerDip);
-        // Street tiles first so POI outlines sit on top of them.
-        foreach (bool streetTiles in (ReadOnlySpan<bool>)[true, false])
+        Rect Screen(Rect map) => new(MapToScreen(map.TopLeft), MapToScreen(map.BottomRight));
+
+        // Street tiles first, then their lots, then POIs and parts on top.
+        foreach (var p in world.Prefabs)
         {
-            uint colour = streetTiles ? StreetTileColour : PrefabColour;
+            if (!p.Name.StartsWith("rwg_tile_", StringComparison.Ordinal)) continue;
+            var rect = PrefabMapRect(p, half);
+            if (!rect.IntersectsWith(visible)) continue;
+            _overlay.Fill(Screen(rect), StreetTileTint);
+            _overlay.Outline(Screen(rect), StreetTileColour, HaloColour);
+        }
+        // Lots are only worth drawing once a 25 m lot is a few pixels across.
+        if (_showLots && _scale >= 0.2)
+        {
             foreach (var p in world.Prefabs)
             {
-                if (p.Name.StartsWith("rwg_tile_", StringComparison.Ordinal) != streetTiles) continue;
-                var rect = PrefabMapRect(p, half);
-                if (!rect.IntersectsWith(visible)) continue;
-                _overlay.Outline(new Rect(MapToScreen(rect.TopLeft), MapToScreen(rect.BottomRight)), colour);
+                if (Prefabs.Find(p.Name) is not { Markers.Count: > 0 } info) continue;
+                if (!PrefabMapRect(p, half).IntersectsWith(visible)) continue;
+                foreach (var m in info.RotatedMarkers(p.Rotation))
+                {
+                    if (m.Type != MarkerType.POISpawn) continue;
+                    var lot = FootprintMapRect(p.Position.X + m.Start.X, p.Position.Z + m.Start.Z, m.Size.X, m.Size.Z);
+                    _overlay.Outline(Screen(lot), LotColour);
+                }
             }
+        }
+        var traders = new List<Rect>();
+        foreach (var p in world.Prefabs)
+        {
+            if (p.Name.StartsWith("rwg_tile_", StringComparison.Ordinal)) continue;
+            var rect = PrefabMapRect(p, half);
+            if (!rect.IntersectsWith(visible)) continue;
+            if (Prefabs.Find(p.Name)?.IsPart == true)
+            {
+                // Parts are small props; outline them only once they are big enough to tell apart.
+                if (_scale >= 0.5) _overlay.Outline(Screen(rect), PartColour);
+                continue;
+            }
+            if (Prefabs.Find(p.Name)?.IsTrader == true)
+            {
+                traders.Add(rect);
+                continue;
+            }
+            _overlay.Fill(Screen(rect), PrefabTint);
+            _overlay.Outline(Screen(rect), PrefabColour, HaloColour);
+        }
+        // Traders last, in their own colour with a double line, so they stand out from the town around them.
+        foreach (var rect in traders)
+        {
+            var s = Screen(rect);
+            _overlay.Fill(s, TraderTint);
+            _overlay.Outline(s, TraderColour, HaloColour);
+            if (s.Width > 8 && s.Height > 8) _overlay.Outline(Rect.Inflate(s, -1 / PixelsPerDip, -1 / PixelsPerDip), TraderColour);
+            else _overlay.Outline(Rect.Inflate(s, 3, 3), TraderColour, HaloColour); // keep them findable when zoomed out
         }
         _overlay.End(dc, RenderSize);
 
-        if (_hoverPrefab is { } hover)
+        if (_hoverPrefab is { } hover && !ReferenceEquals(hover, _selectedPrefab))
         {
             var rect = PrefabMapRect(hover, half);
             dc.DrawRectangle(HoverFill, HoverPen, new Rect(MapToScreen(rect.TopLeft), MapToScreen(rect.BottomRight)));
         }
+        if (_selectedPrefab is { } selected)
+        {
+            var rect = PrefabMapRect(selected, half);
+            var screen = new Rect(MapToScreen(rect.TopLeft), MapToScreen(rect.BottomRight));
+            dc.DrawRectangle(SelectedFill, SelectedPen, screen);
+            if (Prefabs.Find(selected.Name) is { } info) DrawFrontArrow(dc, screen, info.FrontDirection(selected.Rotation), SelectedPen);
+        }
+    }
+
+    private void DrawPrefabGhost(DrawingContext dc)
+    {
+        if (_prefabGhost is not { } ghost) return;
+        if (ghost.Lot is { } lot)
+            dc.DrawRectangle(null, ghost.LotFits ? LotPen : GhostWarnPen, new Rect(MapToScreen(lot.TopLeft), MapToScreen(lot.BottomRight)));
+        var screen = new Rect(MapToScreen(ghost.MapRect.TopLeft), MapToScreen(ghost.MapRect.BottomRight));
+        var pen = ghost.Warning ? GhostWarnPen : GhostPen;
+        dc.DrawRectangle(ghost.Warning ? GhostWarnFill : GhostFill, pen, screen);
+        if (ghost.Front >= 0) DrawFrontArrow(dc, screen, ghost.Front, pen);
+    }
+
+    /// <summary>An arrow from the centre of <paramref name="screen"/> toward the prefab's front (0 N, 1 W, 2 S, 3 E).</summary>
+    private static void DrawFrontArrow(DrawingContext dc, Rect screen, int front, Pen pen)
+    {
+        var c = new Point(screen.X + screen.Width / 2, screen.Y + screen.Height / 2);
+        var dir = front switch { 0 => new Vector(0, -1), 1 => new Vector(-1, 0), 2 => new Vector(0, 1), _ => new Vector(1, 0) };
+        double reach = (front % 2 == 0 ? screen.Height : screen.Width) / 2;
+        if (reach < 6) return;
+        double head = Math.Min(10, reach * 0.4);
+        var tip = c + dir * reach * 0.9;
+        var side = new Vector(-dir.Y, dir.X);
+        dc.DrawLine(pen, c, tip);
+        dc.DrawLine(pen, tip, tip - dir * head + side * head * 0.6);
+        dc.DrawLine(pen, tip, tip - dir * head - side * head * 0.6);
+    }
+
+    /// <summary>A footprint whose south-west corner is at world (x, z), in map coordinates.</summary>
+    public Rect FootprintMapRect(int x, int z, int sizeX, int sizeZ)
+    {
+        int size = _renderer?.World.Size ?? 0;
+        int half = size / 2;
+        return new Rect(x + half, size - (z + half + sizeZ), sizeX, sizeZ);
     }
 
     /// <summary>A prefab's footprint in map coordinates (its position is the south-west min corner in world coords).</summary>
@@ -507,7 +672,14 @@ public sealed class MapView : FrameworkElement
         {
             var m = new Point(s.X + half, world.Size - (s.Z + half));
             if (!visible.Contains(m)) continue;
-            dc.DrawEllipse(SpawnFill, SpawnPen, MapToScreen(m), 5, 5);
+            var c = MapToScreen(m);
+            // The tick shows which way the player faces: RotationY is degrees clockwise from north.
+            double a = s.RotationY * Math.PI / 180;
+            var facing = new Vector(Math.Sin(a), -Math.Cos(a));
+            bool selected = ReferenceEquals(s, _selectedSpawn);
+            dc.DrawLine(CursorShadowPen, c, c + facing * 16);
+            dc.DrawLine(SpawnFacingPen, c, c + facing * 16);
+            dc.DrawEllipse(selected ? SelectedSpawnFill : SpawnFill, SpawnPen, c, selected ? 7 : 5, selected ? 7 : 5);
         }
     }
 

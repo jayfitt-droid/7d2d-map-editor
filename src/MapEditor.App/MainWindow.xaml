@@ -166,7 +166,51 @@
                                    Text="Game stamps blend toward 255 m (raise) or 0 m (carve) by their shape; lower the strength for gentler results." />
                     </StackPanel>
 
+                    <StackPanel Visibility="{Binding IsPrefabTool, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{Binding PlacementText}" Foreground="#E0E0E6" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0" />
+                        <CheckBox Content="Flatten the ground under it" IsChecked="{Binding PrefabFlatten}" Margin="0,8,0,3" />
+                        <CheckBox Content="Add street furniture to street tiles" IsChecked="{Binding PrefabAddParts}" />
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="Search (name, tag or zone)" />
+                        <TextBox Text="{Binding PrefabSearch, UpdateSourceTrigger=PropertyChanged, Delay=200}" />
+                        <ComboBox ItemsSource="{Binding PrefabCategories}" SelectedItem="{Binding PrefabCategory}" Margin="0,4,0,0" />
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition />
+                                <ColumnDefinition Width="4" />
+                                <ColumnDefinition />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox ItemsSource="{Binding PrefabTiers}" SelectedItem="{Binding PrefabTier}" />
+                            <ComboBox Grid.Column="2" ItemsSource="{Binding PrefabSizes}" SelectedItem="{Binding PrefabSize}" />
+                        </Grid>
+                        <TextBlock Text="{Binding PrefabResultsText}" Foreground="#8A8A96" FontSize="11" Margin="0,4,0,2" />
+                        <ListBox ItemsSource="{Binding PrefabResults}" SelectedItem="{Binding SelectedPrefabInfo}" Height="220"
+                                 Background="#2D2E34" Foreground="#E0E0E6" BorderThickness="0"
+                                 VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Right" Foreground="#8A8A96" Margin="6,0,0,0">
+                                            <Run Text="{Binding Size.X, Mode=OneWay}" />×<Run Text="{Binding Size.Z, Mode=OneWay}" />
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <Image Source="{Binding SelectedPrefabInfo.PreviewImagePath, Converter={StaticResource PreviewImage}}"
+                               MaxHeight="160" Margin="0,6,0,0" Stretch="Uniform" />
+                        <TextBlock Foreground="#8A8A96" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Text="Pick a prefab, then click the map to place it; Q and E turn it, Esc stops placing. With nothing picked, click a prefab to select it, drag to move it, Delete or Shift+click removes it. Street tiles snap to RWG's 150 m grid and match a neighbour's height; POIs dropped in a tile's lots (blue) face the street." />
+                    </StackPanel>
+
+                    <StackPanel Visibility="{Binding IsSpawnTool, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{Binding SelectionText}" Foreground="#E0E0E6" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0" />
+                        <TextBlock Foreground="#8A8A96" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Text="Click to add a spawn point, drag one to move it, Q and E turn it, Delete or Shift+click removes it. The tick shows which way players face. RWG makes 12, in forest near a trader." />
+                    </StackPanel>
+
                     <TextBlock Text="Layers" Style="{StaticResource PanelHeader}" />
+                    <CheckBox Content="Dim the map (prefabs stand out)" IsChecked="{Binding DimMap}" />
                     <CheckBox Content="Hillshade" IsChecked="{Binding ShowHillshade}" />
                     <CheckBox Content="Biomes" IsChecked="{Binding ShowBiomes}" />
                     <CheckBox Content="Water" IsChecked="{Binding ShowWater}" />
@@ -188,7 +232,36 @@
             <map:MapView x:Name="Map"
                          Layers="{Binding Layers}"
                          ShowPrefabs="{Binding ShowPrefabs}"
-                         ShowSpawns="{Binding ShowSpawns}" />
+                         ShowSpawns="{Binding ShowSpawns}"
+                         DimMap="{Binding DimMap}" />
+
+            <!-- Info card for the prefab selected on the map. -->
+            <Border Width="300" Margin="12" HorizontalAlignment="Left" VerticalAlignment="Top"
+                    Background="#E62A2B30" BorderBrush="#50DCFF" BorderThickness="1" CornerRadius="4" Padding="10"
+                    Visibility="{Binding ShowPrefabCard, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="✕" Padding="6,0" Background="Transparent" BorderThickness="0"
+                                Foreground="#C8C8D0" ToolTip="Deselect (Esc)" Click="PrefabCardClose_Click" />
+                        <TextBlock Text="{Binding SelectedMapPrefabName}" Foreground="White" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    </DockPanel>
+                    <Image Source="{Binding SelectedMapPrefab.PreviewImagePath, Converter={StaticResource PreviewImage}}"
+                           MaxHeight="200" Margin="0,6,0,0" Stretch="Uniform" />
+                    <TextBlock Text="{Binding SelectionText}" Foreground="#D8D8DE" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
+                    <UniformGrid Columns="4" Margin="0,8,0,0">
+                        <Button Content="↺ Q" ToolTip="Turn a quarter counter-clockwise" Margin="0,0,3,0" Click="PrefabTurnLeft_Click" />
+                        <Button Content="↻ E" ToolTip="Turn a quarter clockwise" Margin="0,0,3,0" Click="PrefabTurnRight_Click" />
+                        <Button Content="▲ PgUp" ToolTip="Raise one block (the ground stays)" Margin="0,0,3,0" Click="PrefabRaise_Click" />
+                        <Button Content="▼ PgDn" ToolTip="Lower one block (the ground stays)" Click="PrefabLower_Click" />
+                    </UniformGrid>
+                    <Button Margin="0,4,0,0" IsEnabled="{Binding CanReplace}" Click="PrefabReplace_Click"
+                            ToolTip="Pick a prefab in the list, then swap it in here, facing the same way">
+                        <TextBlock Text="{Binding ReplaceLabel}" TextTrimming="CharacterEllipsis" />
+                    </Button>
+                    <Button Content="Delete  (Del)" Margin="0,4,0,0" Click="PrefabDelete_Click" />
+                </StackPanel>
+            </Border>
             <map:MiniMap x:Name="Overview" Width="200" Height="200" Margin="12"
                          HorizontalAlignment="Right" VerticalAlignment="Bottom" />
             <TextBlock Text="Working..." Foreground="White" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"
