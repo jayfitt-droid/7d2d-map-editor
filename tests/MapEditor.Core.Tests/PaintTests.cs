@@ -27,7 +27,7 @@ public sealed class PaintTests : IDisposable
         var world = Flat();
         var stack = new UndoStack();
         var session = new EditSession("Biome");
-        var rect = LayerPaint.PaintBiome(world, 256, 256, 40, 0xFFE477, session);
+        var rect = LayerPaint.PaintBiome(world, 256, 256, new BrushTip(40), 0xFFE477, session);
         stack.Push(session);
 
         Assert.Contains(0xFFE477u, world.Biomes!.Palette);
@@ -45,8 +45,8 @@ public sealed class PaintTests : IDisposable
     public void Painted_biomes_and_radiation_survive_a_save()
     {
         var world = Flat();
-        LayerPaint.PaintBiome(world, 100, 100, 50, 0xBA00FF, new EditSession("b"));
-        LayerPaint.PaintRadiation(world, 400, 400, 64, erase: false, new EditSession("r"));
+        LayerPaint.PaintBiome(world, 100, 100, new BrushTip(50), 0xBA00FF, new EditSession("b"));
+        LayerPaint.PaintRadiation(world, 400, 400, new BrushTip(64), erase: false, new EditSession("r"));
         world.ExtraFiles[WorldFiles.Level] = [.. "ttw\0"u8, 32, .. "00000000000000000000000000000000"u8];
 
         WorldWriter.Write(world, _dir);
@@ -63,8 +63,8 @@ public sealed class PaintTests : IDisposable
     public void Radiation_erase_clears_cells()
     {
         var world = Flat();
-        LayerPaint.PaintRadiation(world, 256, 256, 100, erase: false, new EditSession("r"));
-        LayerPaint.PaintRadiation(world, 256, 256, 100, erase: true, new EditSession("e"));
+        LayerPaint.PaintRadiation(world, 256, 256, new BrushTip(100), erase: false, new EditSession("r"));
+        LayerPaint.PaintRadiation(world, 256, 256, new BrushTip(100), erase: true, new EditSession("e"));
         Assert.All(world.Radiation!.Data, v => Assert.Equal(0, v));
     }
 
@@ -126,7 +126,7 @@ public sealed class PaintTests : IDisposable
         var before = new uint[MapRenderer.TileSize * MapRenderer.TileSize];
         renderer.RenderTile(0, 0, 0, MapLayers.Biomes, before);
 
-        LayerPaint.PaintBiome(world, 128, 128, 30, 0xFFFFFF, new EditSession("snow"));
+        LayerPaint.PaintBiome(world, 128, 128, new BrushTip(30), 0xFFFFFF, new EditSession("snow"));
         var after = new uint[before.Length];
         renderer.RenderTile(0, 0, 0, MapLayers.Biomes, after);
 

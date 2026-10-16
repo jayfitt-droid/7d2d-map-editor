@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using MapEditor.Core.GameData;
 using MapEditor.Core.Model;
+using MapEditor.Core.Ops;
 using MapEditor.Core.Rendering;
 
 namespace MapEditor.App;
@@ -82,6 +83,21 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private double _flattenHeight = 40;
     [ObservableProperty] private bool _flattenLocked;
     [ObservableProperty] private double _noiseScale = 48;
+
+    public IReadOnlyList<BrushShape> BrushShapes { get; } = Enum.GetValues<BrushShape>();
+    public IReadOnlyList<BrushFalloff> BrushFalloffs { get; } = Enum.GetValues<BrushFalloff>();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSquareBrush))]
+    private BrushShape _brushShape;
+
+    [ObservableProperty] private BrushFalloff _brushFalloff;
+    [ObservableProperty] private double _brushRotation;
+
+    public bool IsSquareBrush => BrushShape == BrushShape.Square;
+
+    /// <summary>The tip the terrain and layer brushes paint with.</summary>
+    public BrushTip BrushTip => new((float)BrushRadius, BrushShape, BrushFalloff, (float)BrushRotation);
 
     public System.Collections.ObjectModel.ObservableCollection<string> StampNames { get; } = [];
     [ObservableProperty] private string? _selectedStamp;

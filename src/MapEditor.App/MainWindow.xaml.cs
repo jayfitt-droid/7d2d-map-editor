@@ -391,6 +391,8 @@ public partial class MainWindow : Window
             case nameof(MainViewModel.BrushRadius):
             case nameof(MainViewModel.StampSize):
             case nameof(MainViewModel.StampRotation):
+            case nameof(MainViewModel.BrushShape):
+            case nameof(MainViewModel.BrushRotation):
                 UpdateToolState();
                 break;
         }
@@ -403,7 +405,7 @@ public partial class MainWindow : Window
         {
             EditorTool.Pan or EditorTool.Water => null,
             EditorTool.Stamp => new BrushCursor(_vm.StampSize, Square: true, _vm.StampRotation),
-            _ => new BrushCursor(_vm.BrushRadius * 2),
+            _ => new BrushCursor(_vm.BrushRadius * 2, _vm.IsSquareBrush, _vm.BrushRotation),
         };
     }
 
@@ -425,12 +427,18 @@ public partial class MainWindow : Window
         {
             case Key.OemOpenBrackets: Resize(1 / 1.2); break;
             case Key.OemCloseBrackets: Resize(1.2); break;
-            case Key.Q: _vm.StampRotation = (_vm.StampRotation + 345) % 360; break;
-            case Key.E: _vm.StampRotation = (_vm.StampRotation + 15) % 360; break;
+            case Key.Q: Rotate(-15); break;
+            case Key.E: Rotate(15); break;
             case Key.F12: SaveSnapshot(); break;
             default: return;
         }
         e.Handled = true;
+    }
+
+    private void Rotate(double degrees)
+    {
+        if (_vm.SelectedTool == EditorTool.Stamp) _vm.StampRotation = (_vm.StampRotation + degrees + 360) % 360;
+        else if (_vm.HasRadius && _vm.IsSquareBrush) _vm.BrushRotation = (_vm.BrushRotation + degrees + 360) % 360;
     }
 
     private void Resize(double factor)

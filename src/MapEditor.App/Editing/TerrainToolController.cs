@@ -105,15 +105,15 @@ public sealed class TerrainToolController
 
     private void Dab(World world, Point grid)
     {
-        float radius = (float)_vm.BrushRadius;
+        var tip = _vm.BrushTip;
         switch (_vm.SelectedTool)
         {
             case EditorTool.Biome:
                 if (_vm.SelectedBiome is { } biome)
-                    _map.InvalidateRegion(LayerPaint.PaintBiome(world, (float)grid.X, (float)grid.Y, radius, biome.Color, _session!));
+                    _map.InvalidateRegion(LayerPaint.PaintBiome(world, (float)grid.X, (float)grid.Y, tip, biome.Color, _session!));
                 return;
             case EditorTool.Radiation:
-                _map.InvalidateRegion(LayerPaint.PaintRadiation(world, (float)grid.X, (float)grid.Y, radius, _erase, _session!));
+                _map.InvalidateRegion(LayerPaint.PaintRadiation(world, (float)grid.X, (float)grid.Y, tip, _erase, _session!));
                 return;
         }
 
@@ -125,8 +125,9 @@ public sealed class TerrainToolController
             EditorTool.Smooth => BrushMode.Smooth,
             _ => BrushMode.Noise,
         };
-        var settings = new BrushSettings(mode, (float)_vm.BrushRadius, (float)_vm.BrushStrength,
-            (float)_vm.FlattenHeight, NoiseScale: (float)_vm.NoiseScale);
+        var settings = new BrushSettings(mode, tip.Radius, (float)_vm.BrushStrength,
+            (float)_vm.FlattenHeight, NoiseScale: (float)_vm.NoiseScale, Shape: tip.Shape, Falloff: tip.Falloff,
+            RotationDegrees: tip.RotationDegrees);
         var rect = TerrainBrush.Dab(world.Height, (float)grid.X, (float)grid.Y, settings, _session!, _noise);
         _map.InvalidateRegion(rect);
     }

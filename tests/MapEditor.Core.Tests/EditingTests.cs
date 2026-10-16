@@ -34,6 +34,46 @@ public sealed class EditingTests : IDisposable
     }
 
     [Fact]
+    public void Hard_square_brush_raises_its_whole_area_evenly()
+    {
+        var world = Flat();
+        var settings = new BrushSettings(BrushMode.Raise, 20, 1, Shape: BrushShape.Square, Falloff: BrushFalloff.Hard);
+        TerrainBrush.Dab(world.Height, 100, 100, settings, new EditSession("Raise"));
+
+        // Corners of the square get the full step; a circle of the same radius would miss them.
+        Assert.Equal(44, H(world, 100, 100), 1);
+        Assert.Equal(44, H(world, 118, 118), 1);
+        Assert.Equal(40, H(world, 121, 100), 1);
+
+        // Rotated 45 degrees, the same corner falls outside while the tip along the axis reaches further out.
+        var rotated = Flat();
+        TerrainBrush.Dab(rotated.Height, 100, 100, settings with { RotationDegrees = 45 }, new EditSession("Raise"));
+        Assert.Equal(40, H(rotated, 118, 118), 1);
+        Assert.Equal(44, H(rotated, 126, 100), 1);
+    }
+
+    [Fact]
+    public void Square_rotation_is_clockwise_on_the_map_like_stamps()
+    {
+        // Turned 30 degrees clockwise (x east, z north), the corner at (+20, +20) moves to about
+        // (+27.3, +7.3) and the one at (-20, +20) to about (-7.3, +27.3).
+        var tip = new BrushTip(20, BrushShape.Square, BrushFalloff.Hard, 30);
+        Assert.True(tip.Distance(26, 7) < 1);
+        Assert.True(tip.Distance(-7, 26) < 1);
+        // A counter-clockwise turn would cover these instead.
+        Assert.True(tip.Distance(26, -7) > 1);
+        Assert.True(tip.Distance(7, 26) > 1);
+    }
+
+    [Fact]
+    public void Linear_falloff_is_half_strength_halfway_out()
+    {
+        var world = Flat();
+        TerrainBrush.Dab(world.Height, 100, 100, new BrushSettings(BrushMode.Raise, 20, 1, Falloff: BrushFalloff.Linear), new EditSession("r"));
+        Assert.Equal(42, H(world, 110, 100), 1);
+    }
+
+    [Fact]
     public void Undo_and_redo_restore_exact_heights()
     {
         var world = Flat();
