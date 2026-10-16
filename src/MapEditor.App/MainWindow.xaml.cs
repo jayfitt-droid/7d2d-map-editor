@@ -186,6 +186,7 @@ public partial class MainWindow : Window
         _sourcePath = sourcePath;
         _savePath = null;
         _undo.Clear();
+        _tools.CancelRoad();
         _tools.World = world;
         _dirty = dirty;
         ShowWorld(world, keepView: false);
@@ -260,6 +261,7 @@ public partial class MainWindow : Window
             UpdateTitle();
             _vm.Status = $"Saved {world.Name} in {sw.Elapsed.TotalSeconds:0.0} s. The game rebuilds its caches on first load."
                 + (addedSpawn is null ? "" : $" Added a spawn point at {addedSpawn.X:0}, {addedSpawn.Z:0} because the world had none.");
+            WarnAboutExistingGames(world.Name);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -272,6 +274,25 @@ public partial class MainWindow : Window
         {
             _vm.IsBusy = false;
         }
+    }
+
+    private readonly HashSet<string> _warnedAboutGames = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Saved games keep the chunks they have already generated, so edits only show up in places a game has
+    /// not visited yet. Says so once per world per session.
+    /// </summary>
+    private void WarnAboutExistingGames(string worldName)
+    {
+        var games = GameInstall.SavedGamesOn(worldName);
+        if (games.Count == 0 || !_warnedAboutGames.Add(worldName)) return;
+        string list = string.Join("\n", games.Take(8).Select(g => "  • " + g)) + (games.Count > 8 ? $"\n  … and {games.Count - 8} more" : "");
+        MessageBox.Show(this,
+            $"The game already has saved games on {worldName}:\n\n{list}\n\n" +
+            "Those games keep the terrain, plants and water they have already generated, so your changes only appear " +
+            "where they have not been yet. Start a new game on this world to see the changes everywhere.\n\n" +
+            $"Saved games are in {Path.Combine(GameInstall.UserSavesDir, worldName)}.",
+            "Existing games on this world", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     /// <summary>Asks about unsaved changes. Returns false if the user wants to stay.</summary>
@@ -296,7 +317,9 @@ public partial class MainWindow : Window
         if (await ConfirmDiscardAsync())
         {
             _closeConfirmed = true;
-            Close();
+            // "Don't save" completes synchronously, still inside this Closing event, where Close() throws;
+            // close once the event has returned instead.
+            _ = Dispatcher.BeginInvoke(Close);
         }
     }
 
@@ -388,6 +411,14 @@ public partial class MainWindow : Window
                 Overview.SetRenderer(renderer, _vm.Layers);
                 break;
             case nameof(MainViewModel.SelectedTool):
+                if (!_vm.IsRoadTool) _tools.CancelRoad();
+                UpdateToolState();
+                break;
+            case nameof(MainViewModel.RoadType):
+            case nameof(MainViewModel.RoadWidth):
+                _tools.RefreshRoadPreview();
+                UpdateToolState();
+                break;
             case nameof(MainViewModel.BrushRadius):
             case nameof(MainViewModel.StampSize):
             case nameof(MainViewModel.StampRotation):
@@ -404,6 +435,7 @@ public partial class MainWindow : Window
         Map.BrushCursor = _vm.SelectedTool switch
         {
             EditorTool.Pan or EditorTool.Water => null,
+            EditorTool.Road => new BrushCursor(_vm.RoadWidth),
             EditorTool.Stamp => new BrushCursor(_vm.StampSize, Square: true, _vm.StampRotation),
             _ => new BrushCursor(_vm.BrushRadius * 2, _vm.IsSquareBrush, _vm.BrushRotation),
         };
@@ -414,6 +446,16 @@ public partial class MainWindow : Window
         base.OnPreviewKeyDown(e);
         // Leave typing in text boxes alone.
         if (e.Handled || Keyboard.FocusedElement is TextBox || Keyboard.Modifiers != ModifierKeys.None) return;
+
+        if (_tools.IsDrawingRoad)
+        {
+            switch (e.Key)
+            {
+                case Key.Enter: _tools.FinishRoad(); e.Handled = true; return;
+                case Key.Escape: _tools.CancelRoad(); e.Handled = true; return;
+                case Key.Back: _tools.UndoRoadPoint(); e.Handled = true; return;
+            }
+        }
 
         var tool = _vm.Tools.FirstOrDefault(t => t.Shortcut == e.Key.ToString());
         if (tool is not null)

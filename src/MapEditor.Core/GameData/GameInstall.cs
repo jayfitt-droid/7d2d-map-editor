@@ -19,6 +19,24 @@ public sealed partial class GameInstall
     public static string UserGeneratedWorldsDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "7DaysToDie", "GeneratedWorlds");
 
+    /// <summary>Where the game keeps each world's saved games, as Saves\{world folder name}\{game name}.</summary>
+    public static string UserSavesDir =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "7DaysToDie", "Saves");
+
+    /// <summary>
+    /// Names of saved games on the world with folder name <paramref name="worldName"/>. Chunks those games
+    /// have already generated are stored in the save and are not rebuilt when the world files change.
+    /// </summary>
+    public static IReadOnlyList<string> SavedGamesOn(string worldName, string? savesDir = null)
+    {
+        string dir = Path.Combine(savesDir ?? UserSavesDir, worldName);
+        if (worldName.Length == 0 || !Directory.Exists(dir)) return [];
+        return [.. Directory.EnumerateDirectories(dir)
+            .Where(game => Directory.Exists(Path.Combine(game, "Region")))
+            .Select(game => Path.GetFileName(game))
+            .Order(StringComparer.OrdinalIgnoreCase)];
+    }
+
     /// <summary>True if the folder looks like a game install (has the config this editor needs).</summary>
     public static bool IsValid(string root) =>
         File.Exists(Path.Combine(root, "Data", "Config", "biomes.xml")) &&

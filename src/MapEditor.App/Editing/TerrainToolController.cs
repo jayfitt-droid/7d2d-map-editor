@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Windows;
 using System.Windows.Input;
 using MapEditor.App.Map;
@@ -16,7 +17,8 @@ public sealed class TerrainToolController
     private EditSession? _session;
     private Point _last; // grid coords (x east, z north) of the previous dab
     private Noise? _noise;
-    private bool _erase; // Shift held at stroke start: erase radiation, drain water
+    private bool _erase; // Shift held at stroke start: erase radiation or roads, drain water
+    private readonly List<Vector2> _roadPoints = []; // grid metres, while a road is being drawn
 
     public TerrainToolController(MapView map, MainViewModel vm, UndoStack undo)
     {
@@ -53,6 +55,14 @@ public sealed class TerrainToolController
             return;
         }
 
+        // Road clicks add points; Shift+drag with the road tool erases roads like a brush.
+        if (_vm.SelectedTool == EditorTool.Road && e.Phase == ToolPhase.Down && !e.Modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            if (e.ClickCount >= 2) FinishRoad();
+            else AddRoadPoint(world, grid);
+            return;
+        }
+
         switch (e.Phase)
         {
             case ToolPhase.Down:
@@ -75,6 +85,7 @@ public sealed class TerrainToolController
         string label = _vm.Tools.First(t => t.Tool == tool).Label;
         if (_erase && tool == EditorTool.Radiation) label = "Erase radiation";
         if (_erase && tool == EditorTool.Water) label = "Drain water";
+        if (tool == EditorTool.Road) label = "Erase road";
         _session = new EditSession(label);
         _noise = tool == EditorTool.Noise ? new Noise(Environment.TickCount) : null;
 
@@ -114,6 +125,9 @@ public sealed class TerrainToolController
                 return;
             case EditorTool.Radiation:
                 _map.InvalidateRegion(LayerPaint.PaintRadiation(world, (float)grid.X, (float)grid.Y, tip, _erase, _session!));
+                return;
+            case EditorTool.Road:
+                _map.InvalidateRegion(RoadOp.Erase(world, (float)grid.X, (float)grid.Y, tip, _session!));
                 return;
         }
 
@@ -165,6 +179,76 @@ public sealed class TerrainToolController
             _vm.Status = $"Filled {Area(filled.Cells)} to {level} m."
                 + (filled.Cells > (long)world.Size * world.Size / 4 ? " That flooded much of the map; Ctrl+Z undoes it." : "");
         _map.InvalidateRegion(filled.Bounds);
+    }
+
+    // ---- roads -------------------------------------------------------------
+
+    public bool IsDrawingRoad => _roadPoints.Count > 0;
+
+    private void AddRoadPoint(World world, Point grid)
+    {
+        if (!world.Height.Contains((int)grid.X, (int)grid.Y)) return;
+        var point = new Vector2((float)grid.X, (float)grid.Y);
+        // Clicking the last point again adds nothing.
+        if (_roadPoints.Count > 0 && Vector2.Distance(_roadPoints[^1], point) < 1) return;
+        _roadPoints.Add(point);
+        UpdateRoadPreview();
+    }
+
+    /// <summary>Removes the last point of the road being drawn.</summary>
+    public void UndoRoadPoint()
+    {
+        if (_roadPoints.Count == 0) return;
+        _roadPoints.RemoveAt(_roadPoints.Count - 1);
+        UpdateRoadPreview();
+    }
+
+    public void CancelRoad()
+    {
+        if (_roadPoints.Count == 0) return;
+        _roadPoints.Clear();
+        UpdateRoadPreview();
+        _vm.Status = "Road cancelled.";
+    }
+
+    /// <summary>Draws the road being edited into the world as one undo step.</summary>
+    public void FinishRoad()
+    {
+        if (World is not { } world || _roadPoints.Count == 0) return;
+        if (_roadPoints.Count < 2)
+        {
+            _vm.Status = "A road needs at least two points.";
+            return;
+        }
+        var road = new RoadPath([.. _roadPoints], _vm.RoadType, (float)_vm.RoadWidth / 2, _vm.RoadGrade);
+        var session = new EditSession(_vm.RoadType == RoadType.Asphalt ? "Asphalt road" : "Gravel road");
+        var rect = RoadOp.Draw(world, road, session);
+        float length = RoadOp.Length(_roadPoints);
+        _roadPoints.Clear();
+        UpdateRoadPreview();
+        _map.InvalidateRegion(rect);
+        _vm.Status = $"Drew {length:N0} m of {_vm.RoadType.ToString().ToLowerInvariant()} road.";
+        if (!session.HasChanges) return;
+        _undo.Push(session);
+        Edited?.Invoke(this, session.Bounds);
+    }
+
+    private void UpdateRoadPreview()
+    {
+        if (World is not { } world || _roadPoints.Count == 0)
+        {
+            _map.RoadPreview = null;
+            return;
+        }
+        _map.RoadPreview = new RoadPreview(
+            [.. _roadPoints.Select(p => new Point(p.X, world.Size - p.Y))], _vm.RoadWidth, _vm.RoadType == RoadType.Asphalt);
+        _vm.Status = $"{_roadPoints.Count} points, {RoadOp.Length(_roadPoints):N0} m. Double-click or Enter to finish, Backspace removes a point, Esc cancels.";
+    }
+
+    /// <summary>Refreshes the preview after the road type or width changes.</summary>
+    public void RefreshRoadPreview()
+    {
+        if (_roadPoints.Count > 0) UpdateRoadPreview();
     }
 
     private void SampleWaterLevel(World world, Point grid)

@@ -12,6 +12,7 @@ public enum EditorTool
     Biome,
     Radiation,
     Water,
+    Road,
 }
 
 /// <summary>A tool as listed in the tool panel, with its keyboard shortcut.</summary>

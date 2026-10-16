@@ -103,6 +103,19 @@ public sealed class MapView : FrameworkElement
         }
     }
 
+    private RoadPreview? _roadPreview;
+
+    /// <summary>The road being drawn, shown with a rubber band to the mouse.</summary>
+    public RoadPreview? RoadPreview
+    {
+        get => _roadPreview;
+        set
+        {
+            _roadPreview = value;
+            InvalidateVisual();
+        }
+    }
+
     public MapLayers Layers
     {
         get => (MapLayers)GetValue(LayersProperty);
@@ -219,7 +232,7 @@ public sealed class MapView : FrameworkElement
         {
             _toolDrag = true;
             CaptureMouse();
-            ToolInput?.Invoke(this, new ToolInputEventArgs(ToolPhase.Down, ScreenToMap(e.GetPosition(this)), Keyboard.Modifiers));
+            ToolInput?.Invoke(this, new ToolInputEventArgs(ToolPhase.Down, ScreenToMap(e.GetPosition(this)), Keyboard.Modifiers, e.ClickCount));
             e.Handled = true;
             return;
         }
@@ -259,7 +272,7 @@ public sealed class MapView : FrameworkElement
         var map = ScreenToMap(p);
         if (_toolDrag) ToolInput?.Invoke(this, new ToolInputEventArgs(ToolPhase.Move, map, Keyboard.Modifiers));
         _mouseMap = map;
-        if (_brushCursor is not null) InvalidateVisual();
+        if (_brushCursor is not null || _roadPreview is not null) InvalidateVisual();
         CursorMoved?.Invoke(this, map);
     }
 
@@ -344,7 +357,40 @@ public sealed class MapView : FrameworkElement
 
         if (ShowPrefabs) DrawPrefabs(dc, visible);
         if (ShowSpawns) DrawSpawns(dc, visible);
+        DrawRoadPreview(dc);
         DrawBrushCursor(dc);
+    }
+
+    private void DrawRoadPreview(DrawingContext dc)
+    {
+        if (_roadPreview is not { MapPoints.Count: > 0 } road) return;
+        var points = road.MapPoints.Select(MapToScreen).ToList();
+        if (_mouseMap is { } m) points.Add(MapToScreen(m));
+
+        var geometry = new StreamGeometry();
+        using (var g = geometry.Open())
+        {
+            g.BeginFigure(points[0], false, false);
+            g.PolyLineTo(points.Skip(1).ToList(), true, true);
+        }
+        geometry.Freeze();
+        var surface = new Pen(road.Asphalt ? RoadAsphaltBrush : RoadGravelBrush, Math.Max(3, road.WidthMetres * _scale))
+        {
+            StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round,
+        };
+        dc.DrawGeometry(null, surface, geometry);
+        dc.DrawGeometry(null, CursorPen, geometry);
+        foreach (var p in points.Take(road.MapPoints.Count))
+            dc.DrawEllipse(Brushes.White, CursorShadowPen, p, 3, 3);
+    }
+
+    private static readonly Brush RoadAsphaltBrush = Frozen(new SolidColorBrush(Color.FromArgb(150, 40, 40, 46)));
+    private static readonly Brush RoadGravelBrush = Frozen(new SolidColorBrush(Color.FromArgb(150, 180, 154, 106)));
+
+    private static Brush Frozen(Brush brush)
+    {
+        brush.Freeze();
+        return brush;
     }
 
     private void DrawBrushCursor(DrawingContext dc)

@@ -95,6 +95,16 @@
                         </StackPanel>
                     </StackPanel>
 
+                    <StackPanel Visibility="{Binding IsRoadTool, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="Surface" />
+                        <ComboBox ItemsSource="{Binding RoadTypes}" SelectedItem="{Binding RoadType}" />
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="{Binding RoadWidth, StringFormat=Width: {0:0} m}" />
+                        <Slider Minimum="3" Maximum="30" Value="{Binding RoadWidth}" IsSnapToTickEnabled="True" TickFrequency="1" />
+                        <CheckBox Content="Grade the terrain under the road" IsChecked="{Binding RoadGrade}" />
+                        <TextBlock Foreground="#8A8A96" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Text="Click to add points; double-click or Enter finishes, Backspace removes the last point, Esc cancels. Shift+drag erases roads using the radius above. RWG uses 18 m highways and 9 m country roads." />
+                    </StackPanel>
+
                     <StackPanel Visibility="{Binding IsBiomeTool, Converter={StaticResource BoolToVisibility}}">
                         <TextBlock Style="{StaticResource FieldLabel}" Text="Biome" />
                         <ComboBox ItemsSource="{Binding BiomeChoices}" SelectedItem="{Binding SelectedBiome}">

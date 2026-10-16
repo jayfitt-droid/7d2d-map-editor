@@ -62,11 +62,12 @@ public sealed partial class MainViewModel : ObservableObject
         new(EditorTool.Biome, "Paint biome", "B"),
         new(EditorTool.Radiation, "Paint radiation", "D"),
         new(EditorTool.Water, "Water fill", "W"),
+        new(EditorTool.Road, "Road", "O"),
     ];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBrushTool), nameof(IsStampTool), nameof(IsFlattenTool), nameof(IsNoiseTool),
-        nameof(HasRadius), nameof(IsBiomeTool), nameof(IsRadiationTool), nameof(IsWaterTool))]
+        nameof(HasRadius), nameof(IsBiomeTool), nameof(IsRadiationTool), nameof(IsWaterTool), nameof(IsRoadTool))]
     private EditorTool _selectedTool = EditorTool.Pan;
 
     public bool IsBrushTool => SelectedTool is EditorTool.Raise or EditorTool.Lower or EditorTool.Flatten or EditorTool.Smooth or EditorTool.Noise;
@@ -76,7 +77,8 @@ public sealed partial class MainViewModel : ObservableObject
     public bool IsBiomeTool => SelectedTool == EditorTool.Biome;
     public bool IsRadiationTool => SelectedTool == EditorTool.Radiation;
     public bool IsWaterTool => SelectedTool == EditorTool.Water;
-    public bool HasRadius => IsBrushTool || IsBiomeTool || IsRadiationTool;
+    public bool IsRoadTool => SelectedTool == EditorTool.Road;
+    public bool HasRadius => IsBrushTool || IsBiomeTool || IsRadiationTool || IsRoadTool;
 
     [ObservableProperty] private double _brushRadius = 60;
     [ObservableProperty] private double _brushStrength = 0.5;
@@ -121,6 +123,16 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>Water surface for the fill tool, in whole metres (splat4 stores a byte).</summary>
     [ObservableProperty] private double _waterLevel = 30;
+
+    public IReadOnlyList<RoadType> RoadTypes { get; } = [RoadType.Asphalt, RoadType.Gravel];
+    [ObservableProperty] private RoadType _roadType = RoadType.Asphalt;
+
+    /// <summary>Full width of the road surface in metres (RWG: 18 m highways, 9 m country roads).</summary>
+    [ObservableProperty] private double _roadWidth = 18;
+
+    [ObservableProperty] private bool _roadGrade = true;
+
+    partial void OnRoadTypeChanged(RoadType value) => RoadWidth = value == RoadType.Asphalt ? 18 : 9;
 
     [ObservableProperty] private string _undoText = "Undo";
     [ObservableProperty] private string _redoText = "Redo";

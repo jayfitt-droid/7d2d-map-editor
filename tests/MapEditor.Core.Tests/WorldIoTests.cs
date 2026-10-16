@@ -1,3 +1,4 @@
+using MapEditor.Core.GameData;
 using MapEditor.Core.IO;
 using MapEditor.Core.Model;
 
@@ -146,5 +147,23 @@ public sealed class WorldIoTests : IDisposable
         WorldWriter.Write(world, outDir);
         Assert.Empty(WorldComparer.Compare(world, WorldReader.Read(outDir)));
         Assert.Equal(File.ReadAllBytes(Path.Combine(folder, WorldFiles.Height)), File.ReadAllBytes(Path.Combine(outDir, WorldFiles.Height)));
+    }
+
+    [Fact]
+    public void Saved_games_are_found_by_world_folder_name()
+    {
+        string saves = Directory.CreateTempSubdirectory("mapeditor-saves-").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(saves, "My World", "Game B", "Region"));
+            Directory.CreateDirectory(Path.Combine(saves, "My World", "Game A", "Region"));
+            Directory.CreateDirectory(Path.Combine(saves, "My World", "NotAGame"));
+            Assert.Equal(["Game A", "Game B"], GameInstall.SavedGamesOn("My World", saves));
+            Assert.Empty(GameInstall.SavedGamesOn("Other World", saves));
+        }
+        finally
+        {
+            Directory.Delete(saves, recursive: true);
+        }
     }
 }
