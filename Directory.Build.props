@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <!-- .NET 10 LTS. -->
+    <MapEditorTfm>net10.0</MapEditorTfm>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Version>0.1.0</Version>
+    <Authors>Jason</Authors>
+    <Product>7D2D Map Editor</Product>
+  </PropertyGroup>
+</Project>

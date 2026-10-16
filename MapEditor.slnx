@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MapEditor.Core/MapEditor.Core.csproj" />
+    <Project Path="src/MapEditor.Cli/MapEditor.Cli.csproj" />
+    <Project Path="src/MapEditor.App/MapEditor.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MapEditor.Core.Tests/MapEditor.Core.Tests.csproj" />
+  </Folder>
+</Solution>

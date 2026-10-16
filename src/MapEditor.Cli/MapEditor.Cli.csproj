@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(MapEditorTfm)</TargetFramework>
+    <AssemblyName>mapeditor-cli</AssemblyName>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MapEditor.Core\MapEditor.Core.csproj" />
+  </ItemGroup>
+</Project>

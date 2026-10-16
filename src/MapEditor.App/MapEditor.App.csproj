@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(MapEditorTfm)-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>MapEditor</AssemblyName>
+    <RootNamespace>MapEditor.App</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MapEditor.Core\MapEditor.Core.csproj" />
+  </ItemGroup>
+</Project>
