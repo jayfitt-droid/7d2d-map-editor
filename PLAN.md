@@ -52,7 +52,17 @@ tests/MapEditor.Core.Tests/
 5. **Paint layers**: biomes (game colours from `biomes.xml`), radiation, water flood-fill.
 6. **Roads**: polyline tool (asphalt or gravel, with width), rasterisation to splat3, grading that smooths the terrain under the road core and feathers the shoulders.
 7. **POIs & spawns**: prefab browser (filters on tags, tier, size, zoning; preview jpg), place/rotate/move, footprint flatten and feather, Y = median height + YOffset, warnings. Spawn point tool. Street-tile (`rwg_tile_*`) placement for hand-built towns.
-8. **Project save, validation, export, release**: `.7dmap` save/load with autosave, validation panel, Export dialog, Velopack installer, README/docs. Ship as v1.0.
+8. **Project save, validation, export, release**: `.7dmap` save/load with autosave, validation panel, Export dialog, Velopack installer, README/docs. Release v1.0 comes after M9.
+9. **UI polish (Paint-style layout)**: rework the main window so it is as simple to use as Microsoft Paint.
+   - **Title bar and menus:** "World name - MapEditor"; File / Edit / View menus; quick-access Save, Undo and Redo icons beside them.
+   - **Ribbon toolbar** across the top, replacing the side tool panel. Groups have a label underneath: Selection; Terrain (raise, lower, smooth, flatten, noise, stamp); Paint (biome, radiation, water); Roads; POIs (prefabs, town, spawns); Layers (a drop-down of layer toggles). Each tool has an icon button with a tooltip and its shortcut key, and the active tool is highlighted.
+   - **Palette group**, like Paint's colours: biome swatches in the game colours from `biomes.xml`, road types (asphalt, gravel), and radiation levels. The current choice is shown as a large swatch. The swatches change with the active tool.
+   - **Vertical sliders on the left edge** for brush size and strength/opacity, like Paint's size and opacity sliders, with values shown while dragging.
+   - **Context options:** the controls for the active tool (shape, rotation, falloff, township, seed, and so on) appear in a collapsible strip under the ribbon instead of a long side panel.
+   - **Status bar along the bottom:** cursor position in game coordinates and height, the biome under the cursor, world size (e.g. 8192 × 8192), the selection size, and a zoom slider with −/+ buttons, a zoom % drop-down and "Fit to window".
+   - **Canvas:** centred on a dark backdrop with a clear edge around the world; the minimap is a toggle in View.
+   - **Look:** follow the Windows light/dark theme; consistent icon set (Segoe Fluent Icons); keyboard access to every control; works at 100–200% display scaling and down to 1366×768.
+   - Done when a new user can find and use every tool without reading docs, and all existing shortcuts still work. Then ship as v1.0.
 
 Each milestone ends with a world that loads in game.
 
