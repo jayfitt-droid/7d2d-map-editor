@@ -1,7 +1,7 @@
 # Plan: 7 Days to Die map editor (Windows desktop app)
 
 ## Context
-The research (`docs/RWG-Research.md`) showed that a 7D2D world is just a folder of files: `dtm.raw`, `biomes.png`, `splat3.png`, `splat4.png`, `radiation.png`, `prefabs.xml`, `spawnpoints.xml`, `map_info.xml` and `main.ttw`. The game processes this folder itself on first load. So a standalone editor can produce playable maps without the in-game generator (RWG) or the biome-brush mod.
+Research showed that a 7D2D world is just a folder of files: `dtm.raw`, `biomes.png`, `splat3.png`, `splat4.png`, `radiation.png`, `prefabs.xml`, `spawnpoints.xml`, `map_info.xml` and `main.ttw`. The game processes this folder itself on first load. So a standalone editor can produce playable maps without the in-game generator (RWG) or the biome-brush mod.
 
 Decisions so far:
 - **Public release.**
@@ -12,7 +12,7 @@ Decisions so far:
 `C:\Users\Jason\Projects\7d2d\MapEditor` currently holds only `docs/`. It isn't a git repo yet.
 
 ## Approach
-A direct-output world editor. It keeps its own editable project format and **exports** finished game world folders. Game assets (stamps, prefabs, biome colours, rwgmixer) are read at runtime from the user's game install and never bundled. Game behaviour (stamp blending, road grading, prefab Y placement) is **reimplemented** from the research notes. Decompiled code is a reference only and is not copied in.
+A direct-output world editor. It keeps its own editable project format and **exports** finished game world folders. Game assets (stamps, prefabs, biome colours, rwgmixer) are read at runtime from the user's game install and never bundled. Game behaviour (stamp blending, road grading, prefab Y placement) is **reimplemented** in the editor's own code; no game code is included.
 
 ### Runtime / tooling
 - **.NET 10 (LTS)**, not .NET 8. .NET 8 reaches end of support in Nov 2026. The machine has SDK 9.0.203, so the .NET 10 SDK must be installed first.

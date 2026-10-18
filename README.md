@@ -93,4 +93,4 @@ The script runs the tests, publishes a self-contained win-x64 build, and packs i
 
 ## How it works
 
-[docs/RWG-Research.md](docs/RWG-Research.md) explains how the game's world generator and world format work. The editor reimplements that behaviour, such as stamp blending, road grading, prefab heights and town layout. It does not copy game code.
+A 7D2D world is a folder of files the game reads on first load. The editor writes those files itself and reimplements the generator's behaviour, such as stamp blending, road grading, prefab heights and town layout. It does not copy game code.
