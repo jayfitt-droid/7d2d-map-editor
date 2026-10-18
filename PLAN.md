@@ -82,7 +82,7 @@ Each milestone ends with a world that loads in game.
   - The palette always shows every biome and both road surfaces; clicking one picks it and switches to its tool. Radiation is paint/erase only, so it has no levels to show.
   - Checked at 1366×768 and in the light and dark themes.
   - The user looked over the UI on 2026-10-18 and found nothing to fix.
-- **v1.0:** waiting on the in-game checks above. `<Version>` is already 1.0.0 in `Directory.Build.props`; then tag `v1.0.0` and run the release.
+- **v1.0:** released 2026-10-18 from tag `v1.0.0` on the private GitHub repo, after the user's last bug fixes (Open World Folder starts in GeneratedWorlds, loading a world resets the tool to Pan, projects save to Documents and never into the game's world folders). `Updates.BuiltInFeed` is still unset, because a private repo's feed can't be read by an installed app; the EULA is still to be read.
 
 ## Verification
 - `dotnet test`: round-trip, orientation, stamp blend against hand-computed cases, road raster widths, prefab Y maths.

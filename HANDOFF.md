@@ -2,6 +2,8 @@
 
 Last updated 2026-10-18.
 
+> **Update:** v1.0.0 has been released (tag `v1.0.0`, GitHub release from `release.yml`). The user's three last bugs were fixed first: Open World Folder starts in GeneratedWorlds, loading a world resets the tool to Pan, and Save Project starts in Documents and refuses the game's world folders. Still open: `Updates.BuiltInFeed` (private repo), the EULA, and testing the installer. The rest of this file predates the release.
+
 **Repo state:**
 - **HEAD:** the commit that adds this handoff, on top of `d572321` "Polish towns, roads and placement from in-game testing" (tagged `v1.0.0b`). Everything is committed.
 - **Remote:** the private repo https://github.com/jayfitt-droid/7d2d-map-editor (`origin`, signed in as `jayfitt-droid` through `gh`). `main` and every tag (`v0.1.0`, `v0.1.1`, `v0.1.2` at `f4d4509`, `v1.0.0b`) are pushed.

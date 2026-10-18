@@ -251,9 +251,9 @@ public partial class MainWindow : Window
         var dialog = new OpenFolderDialog
         {
             Title = "Select a 7 Days to Die world folder",
-            InitialDirectory = _settings.LastWorldFolder is { } last && Directory.Exists(Path.GetDirectoryName(last))
-                ? Path.GetDirectoryName(last)!
-                : GameInstall.UserGeneratedWorldsDir,
+            InitialDirectory = Directory.Exists(GameInstall.UserGeneratedWorldsDir) || _install is null
+                ? GameInstall.UserGeneratedWorldsDir
+                : _install.WorldsDir,
         };
         if (dialog.ShowDialog(this) != true) return;
         await OpenWorldAsync(dialog.FolderName);
@@ -300,6 +300,7 @@ public partial class MainWindow : Window
         _prefabTools.World = world;
         _prefabTools.Refresh();
         _townTools.World = world;
+        _vm.SelectedTool = EditorTool.Pan;
         _townTools.Refresh();
         LoadMixer();
         _dirty = dirty;
@@ -342,21 +343,35 @@ public partial class MainWindow : Window
             return await WriteWorldAsync(_savePath);
 
         string? path = saveAs ? null : _projectPath;
-        if (path is null)
+        while (path is null)
         {
             var dialog = new SaveFileDialog
             {
                 Title = "Save project",
                 Filter = "Map editor project (*.7dmap)|*.7dmap",
                 FileName = _world.Name + ProjectStore.Extension,
-                InitialDirectory = Path.GetDirectoryName(_projectPath ?? _settings.LastWorldFolder ?? "") is { Length: > 0 } dir && Directory.Exists(dir)
+                InitialDirectory = Path.GetDirectoryName(_projectPath ?? "") is { Length: > 0 } dir && Directory.Exists(dir) && !IsGameWorldsPath(dir)
                     ? dir
                     : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             };
             if (dialog.ShowDialog(this) != true) return false;
+            if (IsGameWorldsPath(dialog.FileName))
+            {
+                MessageBox.Show(this, "Projects can't be saved in the game's world folders. Choose another folder, such as Documents.",
+                    "Save project", MessageBoxButton.OK, MessageBoxImage.Warning);
+                continue;
+            }
             path = dialog.FileName;
         }
         return await SaveProjectAsync(path);
+    }
+
+    /// <summary>True if the path is inside GeneratedWorlds or the game's own Worlds folder, where projects must not go.</summary>
+    private bool IsGameWorldsPath(string path)
+    {
+        string full = Path.GetFullPath(path);
+        return new[] { GameInstall.UserGeneratedWorldsDir, _install?.WorldsDir }.Any(root => root is not null
+            && full.StartsWith(Path.TrimEndingDirectorySeparator(Path.GetFullPath(root)) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<bool> SaveProjectAsync(string path)
