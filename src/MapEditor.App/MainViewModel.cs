@@ -299,7 +299,10 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private int _townSeed = Random.Shared.Next(1, 1_000_000);
     [ObservableProperty] private bool _townReplace = true;
     [ObservableProperty] private bool _townRoads = true;
+    [ObservableProperty] private LinkRoadStyle _townLinkStyle = LinkRoadStyle.JoinedRoad;
     [ObservableProperty] private bool _townParts = true;
+    [ObservableProperty] private int _townTraders = 1;
+    public IReadOnlyList<int> TraderCounts { get; } = [0, 1, 2, 3, 4, 5];
 
     /// <summary>Describes the selection and the planned town.</summary>
     [ObservableProperty] private string _townText = "";

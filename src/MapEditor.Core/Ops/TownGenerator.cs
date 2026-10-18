@@ -16,10 +16,28 @@ public sealed record TownOptions(TownshipType Township, int Seed)
 
     /// <summary>Add the street furniture, cars and props the prefabs' part markers call for.</summary>
     public bool AddParts { get; init; } = true;
+
+    /// <summary>
+    /// How many traders the town gets, as long as enough lots are big enough. RWG leaves this to chance, so small
+    /// towns often get none and big ones several; here ordinary lots never get a trader, and this many lots are kept
+    /// for one: the first nearest the town's middle, the rest spread apart.
+    /// </summary>
+    public int Traders { get; init; } = 1;
+
+    /// <summary>Whose surface and width a link road takes: the road it joins, or the town street it leaves from.</summary>
+    public LinkRoadStyle LinkStyle { get; init; } = LinkRoadStyle.JoinedRoad;
+}
+
+public enum LinkRoadStyle
+{
+    /// <summary>Match the road the link runs to.</summary>
+    JoinedRoad,
+    /// <summary>Match the street where it leaves the town's tile.</summary>
+    Tile,
 }
 
 /// <summary>
-/// One 150 m town cell. Cell (Cx, Cz) covers grid metres Origin + Cx·150 to Origin + Cx·150 + 150 east and the
+/// One 150 m town cell. Cell (Cx, Cz) covers grid metres Origin + CxÂ·150 to Origin + CxÂ·150 + 150 east and the
 /// same north. The origin is the corner of the town's selection, so a town lines up with what was drawn rather than
 /// with RWG's world-wide grid. Exits are bits: 0 north, 1 east, 2 south, 3 west.
 /// </summary>
@@ -223,8 +241,13 @@ public static class TownGenerator
         }
         // Link roads keep clear of every prefab that stays, other towns' street tiles included.
         var removed = plan.Removed.ToHashSet();
-        PlanRoads(world, plan, town, township, options, footprints.Where(f => !removed.Contains(f.Prefab)).Select(f => f.Rect).ToList());
+        var roads = options.ConnectRoads ? RoadPixels(world, plan, town) : [];
+        OpenGateways(plan, town, roads);
+        // Tiles are picked before the link roads are routed, so a road can take the width of the street it leaves.
         new Filler(world, library, mixer, biomes, plan, options).Fill();
+        if (options.ConnectRoads)
+            PlanLinks(world, library, plan, town, township, options, roads,
+                footprints.Where(f => !removed.Contains(f.Prefab)).Select(f => f.Rect).ToList());
         return plan;
     }
 
@@ -533,18 +556,11 @@ public static class TownGenerator
     // ---- roads ---------------------------------------------------------------
 
     /// <summary>
-    /// Opens the town to the outside: gateways get the exit facing away from town, and each open exit is joined
-    /// to the nearest road ahead of it. A town without gateways opens the edge nearest a road.
+    /// Opens the town to the outside: gateways get the exit facing away from town. A town without gateways opens
+    /// the edge nearest a road.
     /// </summary>
-    private static void PlanRoads(World world, TownPlan plan, Dictionary<(int, int), TownTile> town, TownshipType township,
-        TownOptions options, List<GridRect> obstacles)
+    private static void OpenGateways(TownPlan plan, Dictionary<(int, int), TownTile> town, List<Vector2> roads)
     {
-        var roads = options.ConnectRoads ? RoadPixels(world, plan, town) : [];
-        bool asphalt = township.Name.EndsWith("city", StringComparison.OrdinalIgnoreCase)
-                       || township.Name.Equals("citybig", StringComparison.OrdinalIgnoreCase)
-                       || township.Name.Equals("town", StringComparison.OrdinalIgnoreCase)
-                       || township.Name.EndsWith("_town", StringComparison.OrdinalIgnoreCase);
-
         foreach (var g in plan.Tiles.Where(t => t.IsGateway))
         {
             if (g.Exits == 0)
@@ -580,14 +596,35 @@ public static class TownGenerator
             }
         }
         foreach (var t in plan.Tiles.Where(t => t.Exits == 0)) t.Exits = 0b0100;
+    }
 
-        if (!options.ConnectRoads) return;
-        var type = asphalt ? RoadType.Asphalt : RoadType.Gravel;
-        float radius = asphalt ? 9f : 4.5f;
+    /// <summary>
+    /// Joins each open exit to the nearest road ahead of it. A link road takes the surface and width of the road
+    /// it joins, or of the tile's street where it leaves the town (<see cref="TownOptions.LinkStyle"/>). The
+    /// township's own style is only the fallback when neither can be measured.
+    /// </summary>
+    private static void PlanLinks(World world, PrefabLibrary library, TownPlan plan, Dictionary<(int, int), TownTile> town,
+        TownshipType township, TownOptions options, List<Vector2> roads, List<GridRect> obstacles)
+    {
+        bool asphalt = township.Name.EndsWith("city", StringComparison.OrdinalIgnoreCase)
+                       || township.Name.Equals("citybig", StringComparison.OrdinalIgnoreCase)
+                       || township.Name.Equals("town", StringComparison.OrdinalIgnoreCase)
+                       || township.Name.EndsWith("_town", StringComparison.OrdinalIgnoreCase);
+        var fallback = asphalt ? (RoadType.Asphalt, 9f) : (RoadType.Gravel, 4.5f);
+        var styles = new Dictionary<Vector2, (RoadType Type, float Radius)>();
+        (RoadType Type, float Radius)? street = null;
+        (RoadType Type, float Radius) StyleAt(Vector2 p)
+        {
+            if (street is { } s) return s;
+            if (!styles.TryGetValue(p, out var style))
+                styles[p] = style = MeasureRoad(world.Roads!, p) ?? fallback;
+            return style;
+        }
+        var views = new Dictionary<(string, int), PrefabTopView?>();
         // The road and the ground it grades must miss prefabs that stay; past the lead it must miss this town too.
-        float clearance = radius + new RoadPath([], type, radius).BlendDistance;
+        static float Clearance((RoadType Type, float Radius) s) => s.Radius + new RoadPath([], s.Type, s.Radius).BlendDistance;
         var own = plan.Tiles.Select(t => t.Cells).ToList();
-        bool Clear(Vector2 a, Vector2 b, bool missTown) =>
+        bool Clear(Vector2 a, Vector2 b, bool missTown, float clearance) =>
             !obstacles.Any(r => SegmentHits(a, b, r, clearance)) && (!missTown || !own.Any(r => SegmentHits(a, b, r, clearance)));
 
         int missing = 0, blocked = 0;
@@ -595,6 +632,7 @@ public static class TownGenerator
         {
             var start = tile.ExitPoint(dir);
             var outward = Outward(dir);
+            street = options.LinkStyle == LinkRoadStyle.Tile ? TileStreet(library, tile, dir, views) : null;
             if (Nearest(roads, start, outward) is not { } near)
             {
                 missing++;
@@ -605,16 +643,20 @@ public static class TownGenerator
             // a prefab or another town are passed over for the nearest clear one.
             var lead = start + outward * 40;
             Vector2[]? points = null;
-            if (Vector2.Distance(start, near) <= 60 && Clear(start, near, missTown: false))
+            if (Vector2.Distance(start, near) <= 60 && Clear(start, near, missTown: false, Clearance(StyleAt(near))))
                 points = [start, near];
-            else if (Clear(start, lead, missTown: false)
-                     && NearestWhere(roads, lead, outward, start, p => Clear(lead, p, missTown: true)) is { } end)
+            else if (NearestWhere(roads, lead, outward, start, p =>
+                     {
+                         float c = Clearance(StyleAt(p));
+                         return Clear(start, lead, missTown: false, c) && Clear(lead, p, missTown: true, c);
+                     }) is { } end)
                 points = [start, lead, end];
             if (points is null)
             {
                 blocked++;
                 continue;
             }
+            var (type, radius) = StyleAt(points[^1]);
             plan.Roads.Add(new RoadPath(points, type, radius));
         }
         if (missing > 0) plan.Warnings.Add($"no road within {RoadSearch / 1000} km of {missing} town exit{(missing == 1 ? "" : "s")}");
@@ -643,10 +685,10 @@ public static class TownGenerator
         return null;
     }
 
-    /// <summary>Whether segment a–b passes within <paramref name="margin"/> of the rectangle.</summary>
+    /// <summary>Whether segment aâ€“b passes within <paramref name="margin"/> of the rectangle.</summary>
     private static bool SegmentHits(Vector2 a, Vector2 b, GridRect rect, float margin)
     {
-        // Liang–Barsky clip against the rectangle grown by the margin.
+        // Liangâ€“Barsky clip against the rectangle grown by the margin.
         float x0 = rect.X0 - margin, z0 = rect.Z0 - margin, x1 = rect.X1 + margin, z1 = rect.Z1 + margin;
         var d = b - a;
         float t0 = 0, t1 = 1;
@@ -696,6 +738,137 @@ public static class TownGenerator
             }
         }
         return found;
+    }
+
+    /// <summary>
+    /// The surface and half-width of the tile's street where it leaves through edge <paramref name="dir"/>, read
+    /// from the tile prefab's blocks: the run of road blocks across the exit, a few metres in from the edge. Null
+    /// when the tile has no prefab, its blocks can't be read, or no street crosses near the exit.
+    /// </summary>
+    private static (RoadType Type, float Radius)? TileStreet(PrefabLibrary library, TownTile tile, int dir,
+        Dictionary<(string, int), PrefabTopView?> views)
+    {
+        if (tile.Prefab is not { } prefab || library.Find(prefab.Name) is not { } info) return null;
+        var key = (prefab.Name, prefab.Rotation);
+        if (!views.TryGetValue(key, out var view))
+            views[key] = view = PrefabTopViewReader.Read(Path.Combine(info.Folder, info.Name + ".tts"), info.YOffset)?.Turned(prefab.Rotation);
+        return view is null ? null : StreetAcross(view, dir);
+    }
+
+    /// <summary>
+    /// The street crossing edge <paramref name="dir"/> of a top view (row 0 north): the median, over lines 1â€“5 m
+    /// in from the edge, of the run of road pixels nearest the edge's middle.
+    /// </summary>
+    public static (RoadType Type, float Radius)? StreetAcross(PrefabTopView view, int dir)
+    {
+        bool northSouth = dir is 0 or 2;
+        int length = northSouth ? view.Width : view.Height;
+        int depth = northSouth ? view.Height : view.Width;
+        uint Pixel(int inset, int i)
+        {
+            // i runs along the edge; inset counts in from it.
+            int col, row;
+            switch (dir)
+            {
+                case 0: col = i; row = inset; break;
+                case 2: col = i; row = view.Height - 1 - inset; break;
+                case 1: col = view.Width - 1 - inset; row = i; break;
+                default: col = inset; row = i; break;
+            }
+            return view.Pixels[row * view.Width + col];
+        }
+
+        // Asphalt first: gravel verges and tracks beside a paved street are not part of it.
+        int mid = length / 2;
+        foreach (var surface in new[] { RoadType.Asphalt, RoadType.Gravel })
+        {
+            var widths = new List<int>();
+            for (int inset = 1; inset <= 5 && inset < depth; inset++)
+            {
+                int found = -1;
+                for (int off = 0; off <= length / 5 && found < 0; off++)
+                    foreach (int i in new[] { mid - off, mid + off })
+                        if (i >= 0 && i < length && PrefabTopViewReader.SurfaceOf(Pixel(inset, i)) == surface)
+                        {
+                            found = i;
+                            break;
+                        }
+                if (found < 0) continue;
+                int lo = found, hi = found;
+                while (lo > 0 && PrefabTopViewReader.SurfaceOf(Pixel(inset, lo - 1)) == surface) lo--;
+                while (hi < length - 1 && PrefabTopViewReader.SurfaceOf(Pixel(inset, hi + 1)) == surface) hi++;
+                // A paved street's 1 m gravel shoulder counts, as RoadOp draws one on wide asphalt roads.
+                if (surface == RoadType.Asphalt)
+                {
+                    if (lo > 0 && PrefabTopViewReader.SurfaceOf(Pixel(inset, lo - 1)) == RoadType.Gravel) lo--;
+                    if (hi < length - 1 && PrefabTopViewReader.SurfaceOf(Pixel(inset, hi + 1)) == RoadType.Gravel) hi++;
+                }
+                widths.Add(hi - lo + 1);
+            }
+            if (widths.Count < 3) continue;
+            widths.Sort();
+            return (surface, Math.Clamp(widths[widths.Count / 2] / 2f, 1f, 12f));
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The surface and half-width of the road painted at <paramref name="at"/>, measured from the road pixels:
+    /// the road's direction is the long axis of the pixels around the point, and its width is the median run
+    /// of road pixels straight across it. Asphalt anywhere across the road makes it asphalt, since highways
+    /// have a gravel shoulder. Null when there is too little road there to measure.
+    /// </summary>
+    internal static (RoadType Type, float Radius)? MeasureRoad(Grid<byte> roads, Vector2 at)
+    {
+        const int Reach = 24;
+        static bool IsRoad(byte b) => b is (byte)RoadType.Asphalt or (byte)RoadType.Gravel;
+        int px = (int)at.X, pz = (int)at.Y;
+        double n = 0, sx = 0, sz = 0, sxx = 0, szz = 0, sxz = 0;
+        for (int z = Math.Max(0, pz - Reach); z <= Math.Min(roads.Height - 1, pz + Reach); z++)
+        {
+            var row = roads.Row(z);
+            for (int x = Math.Max(0, px - Reach); x <= Math.Min(roads.Width - 1, px + Reach); x++)
+            {
+                if (!IsRoad(row[x]) || (x - px) * (x - px) + (z - pz) * (z - pz) > Reach * Reach) continue;
+                n++;
+                sx += x; sz += z;
+                sxx += (double)x * x; szz += (double)z * z; sxz += (double)x * z;
+            }
+        }
+        if (n < 8) return null;
+        var centre = new Vector2((float)(sx / n) + 0.5f, (float)(sz / n) + 0.5f);
+        double cxx = sxx / n - sx / n * (sx / n), czz = szz / n - sz / n * (sz / n), cxz = sxz / n - sx / n * (sz / n);
+        float angle = 0.5f * (float)Math.Atan2(2 * cxz, cxx - czz);
+        var along = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
+        var across = new Vector2(-along.Y, along.X);
+
+        bool asphalt = false;
+        byte At(Vector2 p)
+        {
+            int x = (int)MathF.Floor(p.X), z = (int)MathF.Floor(p.Y);
+            return x < 0 || z < 0 || x >= roads.Width || z >= roads.Height ? (byte)0 : roads[x, z];
+        }
+        var widths = new List<float>();
+        for (int s = -8; s <= 8; s++)
+        {
+            var mid = centre + along * s;
+            if (!IsRoad(At(mid))) continue;
+            float width = 0.5f;
+            foreach (var side in new[] { across, -across })
+                for (float t = 0.5f; t <= Reach; t += 0.5f)
+                {
+                    byte b = At(mid + side * t);
+                    if (!IsRoad(b)) break;
+                    asphalt |= b == (byte)RoadType.Asphalt;
+                    width += 0.5f;
+                }
+            asphalt |= At(mid) == (byte)RoadType.Asphalt;
+            widths.Add(width);
+        }
+        if (widths.Count < 3) return null;
+        widths.Sort();
+        float radius = Math.Clamp(MathF.Round(widths[widths.Count / 2]) / 2, 1f, 12f);
+        return (asphalt ? RoadType.Asphalt : RoadType.Gravel, radius);
     }
 
     /// <summary>The nearest road pixel within range, ahead of <paramref name="from"/> if a direction is given.</summary>
@@ -761,8 +934,13 @@ public static class TownGenerator
                     return new Candidate(p, tags, themes, rule, byName);
                 })
                 .ToList();
-            _candidates = Shuffled(list, new Random(options.Seed ^ 0x5bd1e995));
+            var shuffled = Shuffled(list, new Random(options.Seed ^ 0x5bd1e995));
+            // Traders only go in the lots kept for them.
+            _traders = shuffled.Where(c => c.Info.IsTrader).ToList();
+            _candidates = shuffled.Where(c => !c.Info.IsTrader).ToList();
         }
+
+        private readonly List<Candidate> _traders;
 
         private (SpawnAdjust?, bool) FirstRule(PrefabInfo p, HashSet<string> tags, HashSet<string> themes)
         {
@@ -774,6 +952,12 @@ public static class TownGenerator
             return (null, false);
         }
 
+        /// <summary>The lots kept for traders: the tile's spot and the lot's start within it.</summary>
+        private HashSet<(int X, int Z, Int3 Start)> _traderLots = [];
+
+        private bool IsTraderLot(PrefabSpot spot, PrefabMarker lot, int depth) =>
+            depth == 0 && _traderLots.Contains((spot.X, spot.Z, lot.Start));
+
         public void Fill()
         {
             var tileCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -781,6 +965,8 @@ public static class TownGenerator
                 if (p.Name.StartsWith("rwg_tile_", StringComparison.OrdinalIgnoreCase))
                     tileCounts[p.Name] = tileCounts.GetValueOrDefault(p.Name) + 1;
 
+            // Every tile is picked before any lot is filled, so the trader's lot can be chosen across the whole town.
+            var placed = new List<(TownTile Tile, PrefabInfo Info, PrefabSpot Spot)>();
             foreach (var t in _plan.Tiles)
             {
                 var (shape, rotations) = ShapeFor(t.Exits);
@@ -798,13 +984,82 @@ public static class TownGenerator
                 var spot = new PrefabSpot(_world.GridToWorld(t.X0), y, _world.GridToWorld(t.Z0), rotation);
                 tileCounts[info.Name] = tileCounts.GetValueOrDefault(info.Name) + 1;
                 t.Prefab = Add(info, spot);
+                placed.Add((t, info, spot));
+            }
+            if (_options.Traders > 0) _traderLots = TraderLots(placed, _options.Traders);
 
+            foreach (var (t, info, spot) in placed)
+            {
                 float budget = _mixer.TileMaxDensity.TryGetValue(info.Name, out float max) ? max : 62f;
                 var taken = new List<(int X0, int Z0, int X1, int Z1)>();
                 FillMarkers(t, info, spot, 0, budget, taken);
                 if (t.IsGateway) AddHighwayTransitions(t, info, spot);
             }
             if (_unfilled > 0) _plan.Warnings.Add($"{_unfilled} lots found no POI");
+        }
+
+        /// <summary>
+        /// Up to <paramref name="count"/> street-tile lots that some trader fits: the first nearest the town's middle,
+        /// each next one the farthest from those already kept. At most one lot per group, since a group's lots are
+        /// alternatives. Warns when there are fewer than asked for.
+        /// </summary>
+        private HashSet<(int X, int Z, Int3 Start)> TraderLots(List<(TownTile Tile, PrefabInfo Info, PrefabSpot Spot)> placed, int count)
+        {
+            var kept = new HashSet<(int, int, Int3)>();
+            if (_traders.Count == 0)
+            {
+                _plan.Warnings.Add("no traders: the game folder has no trader prefabs");
+                return kept;
+            }
+            var lots = new List<(int X, int Z, Int3 Start, string Group, Vector2 Centre)>();
+            foreach (var (_, info, spot) in placed)
+                foreach (var lot in info.RotatedMarkers(spot.Rotation).Where(m => m.Type == MarkerType.POISpawn))
+                    if (_traders.Any(c => SizeValid(c.Info, 0, 0, lot.Size.X, lot.Size.Z)))
+                        lots.Add((spot.X, spot.Z, lot.Start, lot.Group,
+                            new Vector2(_world.WorldToGrid(spot.X) + lot.Start.X + lot.Size.X / 2f, _world.WorldToGrid(spot.Z) + lot.Start.Z + lot.Size.Z / 2f)));
+
+            var bounds = _plan.Bounds;
+            var middle = new Vector2((bounds.X0 + bounds.X1) / 2f, (bounds.Z0 + bounds.Z1) / 2f);
+            var centres = new List<Vector2>();
+            var groups = new HashSet<(int, int, string)>();
+            while (kept.Count < count)
+            {
+                int best = -1;
+                float bestScore = 0;
+                for (int i = 0; i < lots.Count; i++)
+                {
+                    var l = lots[i];
+                    if (groups.Contains((l.X, l.Z, l.Group))) continue;
+                    // The first is the nearest the middle; later ones the farthest from every trader so far.
+                    float score = centres.Count == 0 ? -Vector2.Distance(l.Centre, middle) : centres.Min(c => Vector2.Distance(c, l.Centre));
+                    if (best < 0 || score > bestScore) (best, bestScore) = (i, score);
+                }
+                if (best < 0) break;
+                var pick = lots[best];
+                kept.Add((pick.X, pick.Z, pick.Start));
+                groups.Add((pick.X, pick.Z, pick.Group));
+                centres.Add(pick.Centre);
+            }
+            if (kept.Count < count)
+                _plan.Warnings.Add(kept.Count == 0
+                    ? "no traders: no lot in this town is big enough for one"
+                    : $"only {kept.Count} of {count} traders: not enough lots are big enough");
+            return kept;
+        }
+
+        /// <summary>The best scoring trader that fits a lot, ignoring the district, density and repeat rules.</summary>
+        private PrefabInfo? ChooseTrader(int maxX, int maxZ, Vector2 centre)
+        {
+            string? biome = BiomeTagAt(_world, _biomes, (int)centre.X, (int)centre.Y);
+            Candidate? best = null;
+            float bestScore = float.MinValue;
+            foreach (var c in _traders)
+            {
+                if (!SizeValid(c.Info, 0, 0, maxX, maxZ)) continue;
+                float score = Score(c, biome);
+                if (best is null || score > bestScore) (best, bestScore) = (c, score);
+            }
+            return best?.Info;
         }
 
         private PrefabInfo? PickTile(string prefix, Dictionary<string, int> counts, Random rand) =>
@@ -829,7 +1084,9 @@ public static class TownGenerator
                 var rand = new Random(Hash(_options.Seed, spot.X, spot.Z, depth + 2));
                 foreach (var group in lots.Select(m => m.Group).Distinct().ToList())
                 {
-                    foreach (var lot in Shuffled(lots.Where(m => m.Group == group).ToList(), rand))
+                    // Lots in a group are alternatives and only one is filled, so the trader's lot goes first.
+                    foreach (var lot in Shuffled(lots.Where(m => m.Group == group).ToList(), rand)
+                                 .OrderBy(m => IsTraderLot(spot, m, depth) ? 0 : 1))
                     {
                         var (maxX, maxZ) = (lot.Size.X, lot.Size.Z);
                         var (minX, minZ) = (maxX, maxZ);
@@ -849,7 +1106,8 @@ public static class TownGenerator
                             if (crowd > 0) densityLeft = Math.Max(6, densityLeft - crowd);
                         }
                         var tags = lot.Tags.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-                        var pick = Choose(district, tags, minX, minZ, maxX, maxZ, centre, densityLeft, 1)
+                        var pick = (IsTraderLot(spot, lot, depth) ? ChooseTrader(maxX, maxZ, centre) : null)
+                                   ?? Choose(district, tags, minX, minZ, maxX, maxZ, centre, densityLeft, 1)
                                    ?? Choose(district, tags, minX, minZ, maxX, maxZ, centre, densityLeft + 8, 0.3f)
                                    ?? Choose(district, tags, minX, minZ, maxX, maxZ, centre, 18, 0);
                         if (pick is null)
@@ -1021,6 +1279,8 @@ public static class TownGenerator
             }
 
         foreach (var t in plan.Tiles) PrefabPlacer.Flatten(world, t.Cells, plan.Ground, plan.Blend, session);
+        // Roads already crossing the blend were reshaped by it; even them out before the link roads are graded.
+        changed = changed.Union(RoadOp.Resmooth(world, changed, plan.Tiles.Select(t => t.Cells).ToList(), session));
         world.Prefabs.AddRange(plan.Prefabs);
 
         foreach (var road in plan.Roads) changed = changed.Union(RoadOp.Draw(world, road, session));

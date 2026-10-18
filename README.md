@@ -49,7 +49,7 @@ A world opened from a folder saves straight back to that folder with Ctrl+S, as 
 | Enter, Esc, Backspace | Finish, cancel, or undo a point (roads, towns) |
 | Del, PgUp, PgDn | Delete the selected prefab, or raise or lower it one block |
 | Wheel, + and -, Home | Zoom, fit to window |
-| Middle drag | Pan with any tool |
+| Right drag | Pan with any tool |
 | Ctrl+Z, Ctrl+Y | Undo, redo |
 | Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S, Ctrl+E | New, open, save, save project as, export |
 | F7, F1 | Validate, show shortcuts |

@@ -19,6 +19,13 @@ public sealed partial class GameInstall
     public static string UserGeneratedWorldsDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "7DaysToDie", "GeneratedWorlds");
 
+    /// <summary>The game's own Mods folder.</summary>
+    public string ModsDir => Path.Combine(Root, "Mods");
+
+    /// <summary>The current user's Mods folder, which the game loads alongside its own since 1.0.</summary>
+    public static string UserModsDir =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "7DaysToDie", "Mods");
+
     /// <summary>Where the game keeps each world's saved games, as Saves\{world folder name}\{game name}.</summary>
     public static string UserSavesDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "7DaysToDie", "Saves");

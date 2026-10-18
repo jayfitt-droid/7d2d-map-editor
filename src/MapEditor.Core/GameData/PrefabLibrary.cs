@@ -112,7 +112,10 @@ public sealed record PrefabInfo(
     public int FrontDirection(int rotation) => (rotation - RotationToFaceNorth) & 3;
 }
 
-/// <summary>All prefabs available to a game install (vanilla Data/Prefabs plus Mods/*/Prefabs).</summary>
+/// <summary>
+/// All prefabs available to a game install: vanilla Data/Prefabs, plus Mods/*/Prefabs in the game folder and in
+/// %APPDATA%\7DaysToDie\Mods.
+/// </summary>
 public sealed class PrefabLibrary
 {
     private readonly Dictionary<string, PrefabInfo> _byName;
@@ -134,9 +137,11 @@ public sealed class PrefabLibrary
     public static PrefabLibrary Load(GameInstall install)
     {
         var roots = new List<string> { install.PrefabsDir };
-        string mods = Path.Combine(install.Root, "Mods");
-        if (Directory.Exists(mods))
-            roots.AddRange(Directory.EnumerateDirectories(mods).Select(m => Path.Combine(m, "Prefabs")).Where(Directory.Exists));
+        // Mods in the game folder and in the user's AppData, each in name order as the game loads them.
+        foreach (string mods in new[] { install.ModsDir, GameInstall.UserModsDir })
+            if (Directory.Exists(mods))
+                roots.AddRange(Directory.EnumerateDirectories(mods).Order(StringComparer.OrdinalIgnoreCase)
+                    .Select(m => Path.Combine(m, "Prefabs")).Where(Directory.Exists));
         return Load(roots);
     }
 

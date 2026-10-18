@@ -9,6 +9,8 @@ public readonly record struct GridRect(int X0, int Z0, int X1, int Z1)
 
     public bool IsEmpty => X1 <= X0 || Z1 <= Z0;
 
+    public bool Contains(int x, int z) => x >= X0 && x < X1 && z >= Z0 && z < Z1;
+
     public GridRect Union(GridRect other) =>
         IsEmpty ? other : other.IsEmpty ? this
         : new(Math.Min(X0, other.X0), Math.Min(Z0, other.Z0), Math.Max(X1, other.X1), Math.Max(Z1, other.Z1));

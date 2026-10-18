@@ -387,7 +387,7 @@ public sealed class PrefabToolController
         var (sx, sz) = info.Footprint(spot.Rotation);
         Rect? lotRect = lot is null ? null : _map.FootprintMapRect(lot.LotX, lot.LotZ, lot.Lot.Size.X, lot.Lot.Size.Z);
         return new PrefabGhost(_map.FootprintMapRect(spot.X, spot.Z, sx, sz), info.FrontDirection(spot.Rotation), warning,
-            lotRect, lot?.Fits ?? true);
+            lotRect, lot?.Fits ?? true, info, spot.Rotation);
     }
 
     private static readonly string[] Facing = ["north", "west", "south", "east"];

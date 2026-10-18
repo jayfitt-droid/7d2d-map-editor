@@ -93,7 +93,12 @@ static int TopView(string output, string[] names)
             return 1;
         }
         Console.WriteLine($"{info.Name}: {info.Size.X}x{info.Size.Y}x{info.Size.Z} in {sw.ElapsedMilliseconds} ms");
-        views.Add(view.Turned(parts.Length > 1 ? int.Parse(parts[1]) : 0));
+        var turned = view.Turned(parts.Length > 1 ? int.Parse(parts[1]) : 0);
+        // The street a link road would match at each edge.
+        string[] edges = ["N", "E", "S", "W"];
+        Console.WriteLine("  streets: " + string.Join(", ", Enumerable.Range(0, 4).Select(d =>
+            TownGenerator.StreetAcross(turned, d) is { } s ? $"{edges[d]} {s.Type} {s.Radius * 2:0.#} m" : $"{edges[d]} none")));
+        views.Add(turned);
     }
     int width = views.Sum(v => v.Width * scale + gap), height = views.Max(v => v.Height) * scale;
     var image = new byte[width * height * 4];

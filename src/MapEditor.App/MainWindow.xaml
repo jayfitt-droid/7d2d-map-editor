@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:map="clr-namespace:MapEditor.App.Map"
         xmlns:local="clr-namespace:MapEditor.App"
+        xmlns:ops="clr-namespace:MapEditor.Core.Ops;assembly=MapEditor.Core"
         Title="7D2D Map Editor" Width="1400" Height="900" MinWidth="1000" MinHeight="600">
     <Window.Resources>
         <!-- One labelled field in the tool options strip. -->
@@ -33,6 +34,7 @@
         <KeyBinding Key="S" Modifiers="Control" Command="{x:Static local:MainWindow.SaveCommand}" />
         <KeyBinding Key="S" Modifiers="Control+Shift" Command="{x:Static local:MainWindow.SaveAsCommand}" />
         <KeyBinding Key="E" Modifiers="Control" Command="{x:Static local:MainWindow.ExportCommand}" />
+        <KeyBinding Key="W" Modifiers="Control" Command="{x:Static local:MainWindow.CloseWorldCommand}" />
         <KeyBinding Key="F7" Command="{x:Static local:MainWindow.ValidateCommand}" />
         <KeyBinding Key="Z" Modifiers="Control" Command="{x:Static local:MainWindow.UndoCommand}" />
         <KeyBinding Key="Y" Modifiers="Control" Command="{x:Static local:MainWindow.RedoCommand}" />
@@ -45,6 +47,7 @@
         <CommandBinding Command="{x:Static local:MainWindow.SaveCommand}" Executed="Save_Executed" CanExecute="HasWorld_CanExecute" />
         <CommandBinding Command="{x:Static local:MainWindow.SaveAsCommand}" Executed="SaveAs_Executed" CanExecute="HasWorld_CanExecute" />
         <CommandBinding Command="{x:Static local:MainWindow.ExportCommand}" Executed="Export_Executed" CanExecute="HasWorld_CanExecute" />
+        <CommandBinding Command="{x:Static local:MainWindow.CloseWorldCommand}" Executed="CloseWorld_Executed" CanExecute="HasWorld_CanExecute" />
         <CommandBinding Command="{x:Static local:MainWindow.ValidateCommand}" Executed="Validate_Executed" CanExecute="HasWorld_CanExecute" />
         <CommandBinding Command="{x:Static local:MainWindow.UndoCommand}" Executed="Undo_Executed" CanExecute="Undo_CanExecute" />
         <CommandBinding Command="{x:Static local:MainWindow.RedoCommand}" Executed="Redo_Executed" CanExecute="Redo_CanExecute" />
@@ -64,6 +67,7 @@
                     <MenuItem Header="_Save" InputGestureText="Ctrl+S" Command="{x:Static local:MainWindow.SaveCommand}" />
                     <MenuItem Header="Save Project _As..." InputGestureText="Ctrl+Shift+S" Command="{x:Static local:MainWindow.SaveAsCommand}" />
                     <MenuItem Header="_Export World..." InputGestureText="Ctrl+E" Command="{x:Static local:MainWindow.ExportCommand}" />
+                    <MenuItem Header="_Close" InputGestureText="Ctrl+W" Command="{x:Static local:MainWindow.CloseWorldCommand}" />
                     <Separator />
                     <MenuItem Header="_Import Heightmap..." Click="ImportHeightmap_Click" />
                     <MenuItem Header="Export _Heightmap..." Click="ExportHeightmap_Click" />
@@ -345,7 +349,18 @@
                         <StackPanel Style="{StaticResource OptionGroup}" Visibility="{Binding IsTownTool, Converter={StaticResource BoolToVisibility}}">
                             <CheckBox Content="Replace prefabs in the way" IsChecked="{Binding TownReplace}" />
                             <CheckBox Content="Join exits to the nearest road" IsChecked="{Binding TownRoads}" />
+                            <TextBlock Text="Match" Style="{StaticResource OptionLabel}" />
+                            <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding TownLinkStyle}" IsEnabled="{Binding TownRoads}" Margin="0,0,16,0"
+                                      AutomationProperties.Name="Link roads match"
+                                      ToolTip="Whose surface and width the joining roads take">
+                                <ComboBoxItem Content="The road they join" Tag="{x:Static ops:LinkRoadStyle.JoinedRoad}" />
+                                <ComboBoxItem Content="The town's streets" Tag="{x:Static ops:LinkRoadStyle.Tile}" />
+                            </ComboBox>
                             <CheckBox Content="Street furniture and props" IsChecked="{Binding TownParts}" />
+                            <TextBlock Text="Traders" Style="{StaticResource OptionLabel}" />
+                            <ComboBox ItemsSource="{Binding TraderCounts}" SelectedItem="{Binding TownTraders}" MinWidth="60" Margin="0,0,16,0"
+                                      AutomationProperties.Name="Traders"
+                                      ToolTip="How many traders the town gets, as long as enough lots are big enough. The first goes nearest the middle, the rest spread apart." />
                             <Button Content="Build  (Enter)" Style="{DynamicResource AccentButtonStyle}" IsEnabled="{Binding HasTownPlan}" Click="TownBuild_Click" />
                             <Button Content="Cancel  (Esc)" Margin="6,0,0,0" Click="TownCancel_Click" />
                         </StackPanel>

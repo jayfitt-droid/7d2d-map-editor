@@ -66,15 +66,22 @@ tests/MapEditor.Core.Tests/
 
 Each milestone ends with a world that loads in game.
 
-## Status (2026-10-16)
+## Status (2026-10-18)
 - **M1–M6:** done and checked in game.
 - **M7:** done. The Town tool plans and builds RWG-style towns, checked in the editor. Still to do: build a town and play a new game on it.
-- **M8:** done in code. `.7dmap` projects (`ProjectStore`): Ctrl+S saves the project, a world opened from a folder still saves back to that folder, and autosave runs every 5 minutes with recovery on the next start. `WorldValidator` checks spawns, traders, POI overlaps, flooded POIs, bounds, unknown prefabs, `main.ttw` and size; it feeds the Issues panel (F7, double-click jumps to the issue) and the Export dialog (Ctrl+E). The Velopack installer, portable zip and update feed come from `build/release.ps1` and from a `v*` tag on GitHub Actions. The README is updated. CLI verbs: `export`, `validate`, `compare`. Still to do: give `Updates.BuiltInFeed` a release URL once the repo has a remote, and read the game EULA.
+  - Confirmed in the editor by the user (2026-10-18):
+    - Town anchoring and snapping.
+    - Link roads avoid prefabs and other towns, warn about exits left unjoined, and run straight.
+    - Hand-placed street tiles follow the town's grid.
+    - Prefab detail on the map: panning is smooth in a dense city, and the Layers toggle works.
+  - Still to check in game: tiles, POI heights, gateways, link roads and the log.
+- **M8:** done in code. `.7dmap` projects (`ProjectStore`): Ctrl+S saves the project, a world opened from a folder still saves back to that folder, and autosave runs every 5 minutes with recovery on the next start. `WorldValidator` checks spawns, traders, POI overlaps, flooded POIs, bounds, unknown prefabs, `main.ttw` and size; it feeds the Issues panel (F7, double-click jumps to the issue) and the Export dialog (Ctrl+E). The Velopack installer, portable zip and update feed come from `build/release.ps1` and from a `v*` tag on GitHub Actions. The README is updated. CLI verbs: `export`, `validate`, `compare`. The user confirmed autosave, saving and reopening projects, Open Recent, File > Close, every validation check except out of bounds, and export: many exported worlds load in game (2026-10-18). Still to do: give `Updates.BuiltInFeed` a release URL once the repo has a remote, and read the game EULA.
 - **M9:** done. The Fluent theme (`ThemeMode="System"`) follows Windows light/dark. Departures from the list above:
   - The icons are this app's own vector line icons (`Icons.cs`), not Segoe Fluent Icons, so every tool has a fitting picture.
   - The ribbon groups are Navigate, Terrain, Paint, Build, Palette, Layers and World.
   - The palette always shows every biome and both road surfaces; clicking one picks it and switches to its tool. Radiation is paint/erase only, so it has no levels to show.
   - Checked at 1366×768 and in the light and dark themes.
+  - The user looked over the UI on 2026-10-18 and found nothing to fix.
 - **v1.0:** waiting on the in-game checks above. `<Version>` is already 1.0.0 in `Directory.Build.props`; then tag `v1.0.0` and run the release.
 
 ## Verification

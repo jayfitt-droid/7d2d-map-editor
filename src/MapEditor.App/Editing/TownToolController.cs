@@ -57,7 +57,9 @@ public sealed class TownToolController
             case nameof(MainViewModel.TownSeed):
             case nameof(MainViewModel.TownReplace):
             case nameof(MainViewModel.TownRoads):
+            case nameof(MainViewModel.TownLinkStyle):
             case nameof(MainViewModel.TownParts):
+            case nameof(MainViewModel.TownTraders):
                 Replan();
                 break;
         }
@@ -158,7 +160,9 @@ public sealed class TownToolController
         {
             ReplacePrefabs = _vm.TownReplace,
             ConnectRoads = _vm.TownRoads,
+            LinkStyle = _vm.TownLinkStyle,
             AddParts = _vm.TownParts,
+            Traders = _vm.TownTraders,
         };
         _plan = TownGenerator.Plan(world, _vm.Prefabs, _vm.Mixer, _vm.Biomes, selection, options);
         ShowPreview();

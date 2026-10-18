@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     public static readonly RoutedUICommand SaveCommand = new("Save", nameof(SaveCommand), typeof(MainWindow));
     public static readonly RoutedUICommand SaveAsCommand = new("Save Project As", nameof(SaveAsCommand), typeof(MainWindow));
     public static readonly RoutedUICommand ExportCommand = new("Export World", nameof(ExportCommand), typeof(MainWindow));
+    public static readonly RoutedUICommand CloseWorldCommand = new("Close", nameof(CloseWorldCommand), typeof(MainWindow));
     public static readonly RoutedUICommand ValidateCommand = new("Validate", nameof(ValidateCommand), typeof(MainWindow));
     public static readonly RoutedUICommand UndoCommand = new("Undo", nameof(UndoCommand), typeof(MainWindow));
     public static readonly RoutedUICommand RedoCommand = new("Redo", nameof(RedoCommand), typeof(MainWindow));
@@ -625,6 +626,38 @@ public partial class MainWindow : Window
             MessageBoxResult.No => true,
             _ => false,
         };
+    }
+
+    private async void CloseWorld_Executed(object sender, ExecutedRoutedEventArgs e) => await CloseWorldAsync();
+
+    /// <summary>File > Close: asks about unsaved changes, then goes back to the start screen with no world open.</summary>
+    private async Task CloseWorldAsync()
+    {
+        if (_world is null || _vm.IsBusy || !await ConfirmDiscardAsync()) return;
+        DeleteAutosave();
+        _tools.CancelRoad();
+        _world = null;
+        _sourcePath = _savePath = _projectPath = null;
+        _projectSettings = new ProjectStore.ProjectSettings();
+        _dirty = false;
+        _undo.Clear();
+        _tools.World = null;
+        _prefabTools.World = null;
+        _prefabTools.Refresh();
+        _townTools.World = null;
+        _townTools.Refresh();
+        _vm.Issues.Clear();
+        _vm.IssuesText = "Press Validate (F7) to check the world.";
+        _vm.WorldSummary = "";
+        _vm.WorldSizeText = "";
+        _vm.CursorText = "";
+        Map.Renderer = null;
+        Overview.SetRenderer(null, _vm.Layers);
+        StartPanel.Visibility = Visibility.Visible;
+        UpdateTitle();
+        UpdateToolState();
+        CommandManager.InvalidateRequerySuggested();
+        _vm.Status = "Closed. Open a world with File > Open (Ctrl+O), or start one with File > New World (Ctrl+N).";
     }
 
     private bool _closeConfirmed;

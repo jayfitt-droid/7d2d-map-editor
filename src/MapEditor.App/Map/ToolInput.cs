@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using MapEditor.Core.GameData;
 
 namespace MapEditor.App.Map;
 
@@ -30,9 +31,11 @@ public sealed record BrushCursor(double SizeMetres, bool Square = false, double 
 
 /// <summary>
 /// A prefab about to be placed or moved: its footprint in map coordinates, the way its front faces
-/// (0 north, 1 west, 2 south, 3 east; -1 unknown), whether it has warnings, and the lot it snaps into.
+/// (0 north, 1 west, 2 south, 3 east; -1 unknown), whether it has warnings, the lot it snaps into, and the prefab
+/// and its turn, so the ghost can show the prefab from above.
 /// </summary>
-public sealed record PrefabGhost(Rect MapRect, int Front, bool Warning, Rect? Lot = null, bool LotFits = true);
+public sealed record PrefabGhost(Rect MapRect, int Front, bool Warning, Rect? Lot = null, bool LotFits = true,
+    PrefabInfo? Info = null, int Rotation = 0);
 
 /// <summary>A planned town tile: its cell in map coordinates, its district's preview colour and its street exits (bit 0 north, then clockwise).</summary>
 public sealed record TownTilePreview(Rect MapRect, Color Colour, int Exits);

@@ -186,6 +186,121 @@ public static class RoadOp
         return bounds;
     }
 
+    /// <summary>
+    /// How far, in metres each way, <see cref="Resmooth"/> averages a road's height along it: a 151 m box, which wipes
+    /// out the ripple a town's 150 m tiles leave, then a 75 m one to round it off.
+    /// </summary>
+    public const int ResmoothReach = 112;
+
+    /// <summary>
+    /// Evens out roads already in <paramref name="area"/> after the ground there was reshaped, for example by a town's or
+    /// a prefab's flattening blend, which leaves a graded road rolling. Each road pixel takes the average height of the
+    /// road pixels around it (two box passes, <see cref="ResmoothReach"/> m each way in all), so the road ramps evenly
+    /// and stays level across. The change is full inside the area and fades out over the next
+    /// <see cref="ResmoothReach"/> m beyond it, so roads join their untouched parts smoothly, and the ground a few
+    /// metres beside the road follows it. Road pixels inside <paramref name="keep"/> (the flattened
+    /// footprints) are neither moved nor used. Returns the area changed.
+    /// </summary>
+    public static GridRect Resmooth(World world, GridRect area, IReadOnlyList<GridRect> keep, EditSession session)
+    {
+        if (world.Roads is not { } roads) return GridRect.Empty;
+        area = area.Clamp(world.Size, world.Size);
+        if (area.IsEmpty) return GridRect.Empty;
+        const int Reach = ResmoothReach, Side = 6;
+        var outer = new GridRect(area.X0 - Reach, area.Z0 - Reach, area.X1 + Reach, area.Z1 + Reach).Clamp(world.Size, world.Size);
+        var work = new GridRect(outer.X0 - Reach, outer.Z0 - Reach, outer.X1 + Reach, outer.Z1 + Reach).Clamp(world.Size, world.Size);
+        int w = work.X1 - work.X0, d = work.Z1 - work.Z0;
+
+        // The kept footprints as a lookup, since a big town has many.
+        var kept = new bool[w * d];
+        foreach (var k in keep)
+        {
+            var r = new GridRect(k.X0 - work.X0, k.Z0 - work.Z0, k.X1 - work.X0, k.Z1 - work.Z0).Clamp(w, d);
+            for (int z = r.Z0; z < r.Z1; z++) Array.Fill(kept, true, z * w + r.X0, Math.Max(0, r.X1 - r.X0));
+        }
+        var mask = new bool[w * d];
+        var height = new double[w * d];
+        bool any = false;
+        for (int z = 0; z < d; z++)
+        {
+            var row = roads.Row(work.Z0 + z);
+            for (int x = 0; x < w; x++)
+            {
+                int gx = work.X0 + x, gz = work.Z0 + z;
+                height[z * w + x] = World.HeightToMetres(world.Height[gx, gz]);
+                if (row[gx] == 0 || kept[z * w + x]) continue;
+                mask[z * w + x] = true;
+                any |= outer.Contains(gx, gz);
+            }
+        }
+        if (!any) return GridRect.Empty;
+
+        var smooth = MaskedMean(height, mask, w, d, 75);
+        smooth = MaskedMean(smooth, mask, w, d, Reach - 75);
+        var delta = new double[w * d];
+        for (int i = 0; i < delta.Length; i++)
+        {
+            if (!mask[i]) continue;
+            int gx = work.X0 + i % w, gz = work.Z0 + i / w;
+            if (!outer.Contains(gx, gz)) continue;
+            // Full strength in the area, fading to none a reach beyond it.
+            int outside = Math.Max(Math.Max(area.X0 - gx, gx - (area.X1 - 1)), Math.Max(area.Z0 - gz, gz - (area.Z1 - 1)));
+            delta[i] = (smooth[i] - height[i]) * Math.Clamp(1 - outside / (double)Reach, 0, 1);
+        }
+        // Beside the road, the ground follows by the road's average change nearby, fading out over a few metres.
+        var (sideDelta, cover) = MaskedMeanWithCover(delta, mask, w, d, Side);
+
+        session.Touch(world.Height, outer);
+        for (int i = 0; i < delta.Length; i++)
+        {
+            int gx = work.X0 + i % w, gz = work.Z0 + i / w;
+            if (!outer.Contains(gx, gz) || kept[i]) continue;
+            double change = mask[i] ? delta[i] : sideDelta[i] * Math.Min(1, cover[i] * 2.5);
+            if (change != 0) world.Height[gx, gz] = World.MetresToHeight((float)(height[i] + change));
+        }
+        return outer;
+    }
+
+    /// <summary>The mean of <paramref name="values"/> over the masked cells in a box of radius <paramref name="r"/>; unmasked cells keep their value.</summary>
+    private static double[] MaskedMean(double[] values, bool[] mask, int w, int d, int r)
+    {
+        var (mean, _) = MaskedMeanWithCover(values, mask, w, d, r);
+        for (int i = 0; i < mean.Length; i++)
+            if (!mask[i]) mean[i] = values[i];
+        return mean;
+    }
+
+    /// <summary>The masked mean in a box of radius <paramref name="r"/> for every cell, and the share of the box that is masked.</summary>
+    private static (double[] Mean, double[] Cover) MaskedMeanWithCover(double[] values, bool[] mask, int w, int d, int r)
+    {
+        // Summed-area tables of the masked values and of the mask, one row and column bigger.
+        var sum = new double[(w + 1) * (d + 1)];
+        var count = new int[(w + 1) * (d + 1)];
+        for (int z = 0; z < d; z++)
+            for (int x = 0; x < w; x++)
+            {
+                int i = z * w + x, s = (z + 1) * (w + 1) + x + 1;
+                sum[s] = (mask[i] ? values[i] : 0) + sum[s - 1] + sum[s - (w + 1)] - sum[s - (w + 1) - 1];
+                count[s] = (mask[i] ? 1 : 0) + count[s - 1] + count[s - (w + 1)] - count[s - (w + 1) - 1];
+            }
+        var mean = new double[w * d];
+        var cover = new double[w * d];
+        for (int z = 0; z < d; z++)
+        {
+            int z0 = Math.Max(0, z - r), z1 = Math.Min(d, z + r + 1);
+            for (int x = 0; x < w; x++)
+            {
+                int x0 = Math.Max(0, x - r), x1 = Math.Min(w, x + r + 1);
+                int a = z1 * (w + 1) + x1, b = z0 * (w + 1) + x1, c = z1 * (w + 1) + x0, e = z0 * (w + 1) + x0;
+                int n = count[a] - count[b] - count[c] + count[e];
+                if (n == 0) continue;
+                mean[z * w + x] = (sum[a] - sum[b] - sum[c] + sum[e]) / n;
+                cover[z * w + x] = n / (double)((2 * r + 1) * (2 * r + 1));
+            }
+        }
+        return (mean, cover);
+    }
+
     /// <summary>Removes road pixels under the brush tip; the terrain is left as it is.</summary>
     public static GridRect Erase(World world, float cx, float cz, BrushTip tip, EditSession session)
     {

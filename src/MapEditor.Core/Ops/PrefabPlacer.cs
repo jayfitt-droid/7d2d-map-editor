@@ -277,8 +277,7 @@ public static class PrefabPlacer
         var cells = Footprint(world, info, spot.X, spot.Z, spot.Rotation);
         session.TouchList(world.Prefabs, p => p.Clone(), cells.Clamp(world.Size, world.Size));
         world.Prefabs.Add(instance);
-        if (flatten && !snappedToLot && !info.IsPart)
-            Flatten(world, cells, GroundUnder(info, spot.Y), info.IsStreetTile ? StreetTileBlend : PoiBlend, session);
+        if (flatten && !snappedToLot && !info.IsPart) FlattenUnder(world, info, cells, spot, session);
         return instance;
     }
 
@@ -336,8 +335,14 @@ public static class PrefabPlacer
 
         var after = Footprint(world, info, spot.X, spot.Z, spot.Rotation);
         session.TouchList(world.Prefabs, p => p.Clone(), after.Clamp(world.Size, world.Size));
-        if (flatten && !snappedToLot && !info.IsPart)
-            Flatten(world, after, GroundUnder(info, spot.Y), info.IsStreetTile ? StreetTileBlend : PoiBlend, session);
+        if (flatten && !snappedToLot && !info.IsPart) FlattenUnder(world, info, after, spot, session);
+    }
+
+    /// <summary>Flattens a placed prefab's footprint, then evens out any road its blend reshaped.</summary>
+    private static void FlattenUnder(World world, PrefabInfo info, GridRect cells, PrefabSpot spot, EditSession session)
+    {
+        var area = Flatten(world, cells, GroundUnder(info, spot.Y), info.IsStreetTile ? StreetTileBlend : PoiBlend, session);
+        RoadOp.Resmooth(world, area, [cells], session);
     }
 
     /// <summary>Removes a prefab and everything on it (<see cref="Contents"/>). Returns how many were removed.</summary>

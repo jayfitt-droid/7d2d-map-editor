@@ -33,7 +33,7 @@ public partial class ShortcutsWindow : Window
             [
                 new(["Wheel", "+", "-"], "Zoom"),
                 new(["Home"], "Fit to window"),
-                new(["Middle drag"], "Pan with any tool"),
+                new(["Right drag"], "Pan with any tool"),
             ]),
             new("File",
             [
@@ -42,6 +42,7 @@ public partial class ShortcutsWindow : Window
                 new(["Ctrl+S"], "Save"),
                 new(["Ctrl+Shift+S"], "Save project as"),
                 new(["Ctrl+E"], "Export world"),
+                new(["Ctrl+W"], "Close"),
                 new(["F7"], "Validate"),
                 new(["Ctrl+Z", "Ctrl+Y"], "Undo / redo"),
                 new(["F1"], "This list"),

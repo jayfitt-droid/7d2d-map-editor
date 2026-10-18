@@ -1,4 +1,5 @@
 using System.Text;
+using MapEditor.Core.Model;
 
 namespace MapEditor.Core.GameData;
 
@@ -47,6 +48,14 @@ public static class PrefabTopViewReader
         Brick = 0xA0604C, Wood = 0x8E6E4A, Metal = 0x7E8790, Concrete = 0xB4B0A8, Glass = 0x9CC4D8, Roof = 0x6E5048;
 
     private enum Kind : byte { Skip, KeepGround, Flat, Building }
+
+    /// <summary>The road surface a top-view pixel shows: asphalt (road paint counts), gravel, or none.</summary>
+    public static RoadType SurfaceOf(uint pixel) => (pixel & 0xFFFFFF) switch
+    {
+        Asphalt or RoadPaint => RoadType.Asphalt,
+        Gravel when pixel >> 24 != 0 => RoadType.Gravel,
+        _ => RoadType.None,
+    };
 
     /// <summary>The top view of the prefab whose .tts is at <paramref name="ttsPath"/>, or null if it can't be read.</summary>
     public static PrefabTopView? Read(string ttsPath, int yOffset)

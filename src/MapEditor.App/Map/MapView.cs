@@ -135,7 +135,7 @@ public sealed class MapView : FrameworkElement
         }
     }
 
-    /// <summary>When true, left-button drags go to <see cref="ToolInput"/>; the middle button still pans.</summary>
+    /// <summary>When true, left-button drags go to <see cref="ToolInput"/>; the right button still pans.</summary>
     public bool ToolActive { get; set; }
 
     /// <summary>Left-button presses, drags and releases while <see cref="ToolActive"/> is set, in map coordinates.</summary>
@@ -374,6 +374,12 @@ public sealed class MapView : FrameworkElement
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         Focus();
+        // One drag at a time: a second button pressed mid-drag is ignored.
+        if (_toolDrag || _dragStart is not null)
+        {
+            e.Handled = true;
+            return;
+        }
         if (e.ChangedButton == MouseButton.Left && ToolActive && _renderer is not null)
         {
             _toolDrag = true;
@@ -382,8 +388,11 @@ public sealed class MapView : FrameworkElement
             e.Handled = true;
             return;
         }
-        if (e.ChangedButton is MouseButton.Left or MouseButton.Middle)
+        // A right drag pans with any tool, as in image editors; a left drag pans with the Pan tool. The middle
+        // button is left free for now.
+        if (e.ChangedButton is MouseButton.Left or MouseButton.Right)
         {
+            _panButton = e.ChangedButton;
             _dragStart = e.GetPosition(this);
             _dragOrigin = _origin;
             CaptureMouse();
@@ -401,11 +410,14 @@ public sealed class MapView : FrameworkElement
             ReleaseMouseCapture();
             return;
         }
-        if (_dragStart is null) return;
+        if (_dragStart is null || e.ChangedButton != _panButton) return;
         _dragStart = null;
         ReleaseMouseCapture();
         Cursor = null;
+        e.Handled = true;
     }
+
+    private MouseButton _panButton;
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
@@ -430,6 +442,12 @@ public sealed class MapView : FrameworkElement
         {
             _toolDrag = false;
             ToolInput?.Invoke(this, new ToolInputEventArgs(ToolPhase.Up, _mouseMap ?? default, Keyboard.Modifiers));
+        }
+        // And a pan, so the next press isn't taken for a second button mid-drag.
+        if (_dragStart is not null)
+        {
+            _dragStart = null;
+            Cursor = null;
         }
         base.OnLostMouseCapture(e);
     }
@@ -814,7 +832,16 @@ public sealed class MapView : FrameworkElement
             dc.DrawRectangle(null, ghost.LotFits ? LotPen : GhostWarnPen, new Rect(MapToScreen(lot.TopLeft), MapToScreen(lot.BottomRight)));
         var screen = new Rect(MapToScreen(ghost.MapRect.TopLeft), MapToScreen(ghost.MapRect.BottomRight));
         var pen = ghost.Warning ? GhostWarnPen : GhostPen;
-        dc.DrawRectangle(ghost.Warning ? GhostWarnFill : GhostFill, pen, screen);
+        // The prefab seen from above, see-through so the map under it still shows, for lining it up with roads.
+        // Until its picture is built (Built redraws) the plain tint stands in.
+        if (ghost.Info is { } info && _detail.Get(info, ghost.Rotation) is { } picture)
+        {
+            dc.PushOpacity(GhostPictureOpacity);
+            dc.DrawImage(picture, screen);
+            dc.Pop();
+            dc.DrawRectangle(ghost.Warning ? GhostWarnFill : null, pen, screen);
+        }
+        else dc.DrawRectangle(ghost.Warning ? GhostWarnFill : GhostFill, pen, screen);
         if (ghost.Front >= 0) DrawFrontArrow(dc, screen, ghost.Front, pen);
     }
 
@@ -840,6 +867,8 @@ public sealed class MapView : FrameworkElement
         int half = size / 2;
         return new Rect(x + half, size - (z + half + sizeZ), sizeX, sizeZ);
     }
+
+    private const double GhostPictureOpacity = 0.75;
 
     /// <summary>On-screen size (device pixels, shorter side) at which a prefab is drawn from above.</summary>
     private const double DetailMinPixels = 40;

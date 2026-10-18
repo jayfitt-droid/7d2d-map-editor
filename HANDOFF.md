@@ -1,8 +1,8 @@
 # Handoff: 7 Days to Die Map Editor
 
-Last updated 2026-10-18. Tag `v0.1.2` is at `f4d4509`, and `v0.1.1` is at `bdacad4`. There's no git remote.
+Last updated 2026-10-18. Tag `v1.0.0b` is on the latest commit on `main`, which holds all work to date. Earlier tags: `v0.1.2` at `f4d4509` and `v0.1.1` at `bdacad4`. There's no git remote.
 
-**Everything since `v0.1.2` is in one commit on `main`, which isn't tagged:** the town generator (M7), all of M8 and M9, and the fixes from the user's testing (listed under Changes Made). The user is still testing. Don't tag `v1.0.0` until they ask.
+The user tested the editor features and played exported worlds in game, and found no errors in the log. Don't tag `v1.0.0` until the user asks.
 
 ## Goal
 
@@ -23,10 +23,16 @@ Rules agreed with the user:
 - **Confirmed in the app by the user:**
   - The Town tool anchoring and snapping ("it does": a town drawn against a road now sits flush with it).
   - The New World dialog fix, the No-preview placeholder, Open Recent and the shortcuts window. They reported nothing further on these.
+  - Prefab detail (2026-10-18): panning is smooth in a dense city, and the Layers toggle works.
+  - Link roads in the editor (2026-10-18): they avoid prefabs and other towns, warn when an exit is left unjoined, and run straight.
+  - Hand-placed street tiles snap to the grid of the town beside them (2026-10-18).
+  - Saving and reopening a project, and Open Recent (2026-10-18).
+  - Export (2026-10-18): the user has loaded many exported worlds in game.
+  - The Paint-style UI (M9) look-over (2026-10-18): "ui looks great".
+  - Validation (2026-10-18): the no-spawn-point, no-trader, overlapping-POI, flooded-POI, spawn-under-water and no-biomes warnings show (no biomes was tested by deleting biomes.png from an export), and export still goes ahead (warnings never block it). Only the out-of-bounds check is untested.
+  - Autosave (2026-10-18). Known limit: every editor window shares one autosave file, `%APPDATA%\7D2DMapEditor\autosave\autosave.7dmap`.
 - **Not yet confirmed:**
-  - Prefab detail on the map, including whether panning is smooth in a dense city.
-  - Link roads avoiding prefabs and other towns.
-  - The straight link-road fix.
+  - Link roads in game (in the editor they're confirmed).
   - All of M8/M9 in game: projects, autosave, validation, export, installer, the Paint-style UI.
   - M7 in game: tiles lining up, POI heights, gateways meeting roads, no errors in the log.
 - **Tests:** 97 pass (`dotnet test MapEditor.slnx`). The whole solution builds with no warnings.
@@ -101,6 +107,14 @@ All paths are relative to `C:\Users\Jason\Projects\7d2d\MapEditor`.
    - A drag that's too small turns red with a note.
    - Hand-placed street tiles follow the nearest town's grid.
 
+9. **Link roads copy the road they join (2026-10-18, confirmed by the user).** `TownGenerator.MeasureRoad` reads the surface and half-width from splat3 at the join point. It takes the road's direction from the long axis of the road pixels within 24 m, and the width from the median run across it. Asphalt anywhere across the road makes it asphalt (highways have gravel shoulders). The township's own style (9 m asphalt or 4.5 m gravel) is only the fallback. Clearance from prefabs now uses each candidate road's measured width.
+10. **Town tool option "Match: The road they join / The town's streets" (2026-10-18, confirmed by the user).** `TownOptions.LinkStyle`. For "The town's streets", `TileStreet` and `StreetAcross` read the tile's top view at the exit edge. They take the median, over lines 1–5 m in from the edge, of the asphalt run nearest the middle, plus 1 m gravel shoulders; gravel is used only when there's no asphalt. To make this work, `Plan` now runs `OpenGateways`, then `Filler.Fill`, then `PlanLinks`, so tiles are picked before roads are routed. Measured on vanilla tiles: gateways are 18 m asphalt (RWG's highway width), countrytown 10–12 m, downtown 8–10 m, residential 6 m, and oldwest is gravel. The CLI `topview` verb now prints each edge's street.
+11. **File > Close (Ctrl+W) (2026-10-18, confirmed by the user).** `CloseWorldAsync` in `MainWindow.xaml.cs` asks about unsaved changes, deletes the autosave, clears the world, tools, undo and Issues, sets `Map.Renderer` to null, and shows the start panel again. It's listed in the shortcuts window.
+12. **Town tool "Traders" count, 0–5, default 1 (2026-10-18, confirmed by the user).** `TownOptions.Traders`. RWG leaves traders to chance (`spawn_trader` is parsed but unused in v3.3), so small towns rarely get one and big ones get several. Now the Filler keeps traders out of the ordinary candidates (`_traders` is a separate list), and `TraderLots` keeps that many street-tile lots that a trader fits, at most one per marker group. The first is nearest the town's middle; each next one is the farthest from those already kept. `ChooseTrader` fills them, ignoring district, density and repeat rules. Fewer lots than asked gives a warning ("only K of N traders…" or "no traders: no lot in this town is big enough for one"). The township's spawn_trader flag is ignored: the count is what the user gets. `Fill` picks every tile before filling any lot.
+13. **Right-drag pans with any tool; middle drag does nothing for now (2026-10-18, confirmed by the user).** The user asked for this, as in image editors. In `MapView.OnMouseDown`, a second button pressed mid-drag is ignored, and `OnMouseUp` only ends a pan on the button that started it. `OnLostMouseCapture` clears a pan. The shortcuts window and README say "Right drag". The user may want the middle button for something later.
+14. **Placement ghost shows the prefab from above (2026-10-18).** `PrefabGhost` carries `Info` and `Rotation`. `MapView.DrawPrefabGhost` draws `_detail.Get(info, rotation)` at 75% opacity (`GhostPictureOpacity`) inside the ghost outline, at any zoom and whatever the Layers toggle says. It falls back to the plain tint while the picture is built, or for prefabs without block data.
+15. **Roads are re-smoothed after a town build or prefab flatten (2026-10-18, confirmed by the user in game).** The user's road in "My World" rolled 0.3–0.5 m beside a town in game. The heightmap showed why: `TownGenerator.Apply` flattens each tile in turn with a 110 m blend, and along a road beside the town the overlapping blends leave a ripple every 150 m (plus a ramp at the town's edge). Away from towns the road was smooth to 6 cm, and dtm_processed.raw matched dtm.raw exactly. `RoadOp.Resmooth(world, area, keep, session)` averages the heights of road pixels: a 151 m box (which cancels a 150 m ripple), then a 75 m one, masked to road pixels, so a road stays level across. It's full strength in the area and fades out over `ResmoothReach` (112 m) beyond it; ground within about 6 m beside the road follows. Footprints in `keep` are untouched. It's called in `Apply` after the tiles are flattened and before the link roads are graded, and from `PrefabPlacer.FlattenUnder` (Place and Move). Test: the roll beside a model town drops from 0.374 m to 0.016 m. Existing worlds only change when a town or prefab is built again.
+
 ## Failed Attempts & Gotchas
 
 - **Implicit styles in dialogs must be `BasedOn="{StaticResource {x:Type ComboBox}}"`** (the same for TextBox). Without it the control drops the Fluent template: old-style boxes, and invisible light text in the drop-down list. Don't base a TextBlock style on `{x:Type TextBlock}` (the theme may not define one).
@@ -133,11 +147,10 @@ All paths are relative to `C:\Users\Jason\Projects\7d2d\MapEditor`.
 ## Next Steps
 
 1. **Wait for the user's test results and fix what they report.** Things still to check:
-   - **Prefab detail:** panning smoothness in a dense city. If it stutters, raise `DetailMinPixels`, or move the pictures into the terrain tiles, which needs tile invalidation on prefab edits.
    - Link roads in game.
    - Towns in game: tiles, POI heights, gateways, the log.
    - Projects, autosave, validation and export.
-2. **Open question:** traders. Earlier city plans in the forest had 0 traders, but a recent town got 2. If towns without traders keep turning up, look at `Filler` and the `GetPrefabWithDistrict` port in `TownGenerator`.
+2. **Traders:** handled by the option in Changes Made 12. Earlier city plans in the forest had 0 traders, but a recent town got 2. If towns without traders keep turning up, look at `Filler` and the `GetPrefabWithDistrict` port in `TownGenerator`.
 3. **When the user asks, commit in parts.** A suggested split:
    - "Add town generator (milestone 7, part 2)": the township fix, link-road fixes and town anchoring.
    - "Add projects, validation, export and installer (milestone 8)": also Open Recent.

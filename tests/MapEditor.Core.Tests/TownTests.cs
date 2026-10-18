@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Xml.Linq;
 using MapEditor.Core.Edit;
 using MapEditor.Core.GameData;
@@ -46,13 +47,13 @@ public sealed class TownTests
     /// <summary>Street tiles of every shape for each district (no gateway caps, as in the game), and a POI per district.</summary>
     private static readonly PrefabLibrary Library = PrefabLibrary.Of(MakeLibrary());
 
-    private static IEnumerable<PrefabInfo> MakeLibrary()
+    private static IEnumerable<PrefabInfo> MakeLibrary(string tileFolder = "RWGTiles")
     {
         foreach (var district in new[] { "downtown", "residential", "rural", "gateway" })
             foreach (var shape in TownGenerator.ShapeNames)
             {
                 if (district == "gateway" && shape == "cap") continue;
-                yield return new PrefabInfo($"rwg_tile_{district}_{shape}", "RWGTiles", new Int3(150, 22, 150), -12, 0, 0, ["streettile"], null)
+                yield return new PrefabInfo($"rwg_tile_{district}_{shape}", tileFolder, new Int3(150, 22, 150), -12, 0, 0, ["streettile"], null)
                 {
                     Markers =
                     [
@@ -301,6 +302,162 @@ public sealed class TownTests
         TownGenerator.Apply(world, Library, plan, new EditSession("Build town"));
         var exit = south[0].ExitPoint(2);
         Assert.Equal((byte)RoadType.Asphalt, world.Roads[(int)exit.X, (int)exit.Y - 10]);
+    }
+
+    [Fact]
+    public void Link_roads_copy_the_surface_and_width_of_the_road_they_join()
+    {
+        var world = Flat();
+        // A narrow gravel road 100 m south of a town that would otherwise get 9 m asphalt.
+        RoadOp.Draw(world, new RoadPath([new(0, 50), new(world.Size, 50)], RoadType.Gravel, 3f, Grade: false), new EditSession("Road"));
+        var plan = TownGenerator.Plan(world, Library, Mixer, Biomes, new GridRect(150, 150, 1200, 1200), new TownOptions(Town, 2));
+
+        Assert.NotEmpty(plan.Roads);
+        Assert.All(plan.Roads, r =>
+        {
+            Assert.Equal(RoadType.Gravel, r.Type);
+            Assert.Equal(3f, r.Radius);
+        });
+    }
+
+    /// <summary>A library with one trader, tagged so a district would pick it if traders were left to chance.</summary>
+    private static PrefabLibrary WithTrader(int size, string tag = "residential") => PrefabLibrary.Of(MakeLibrary()
+        .Append(new PrefabInfo("trader_test", "POIs", new Int3(size, 20, size), -1, 0, 1, [tag], null)).ToList());
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(3)]
+    public void A_town_gets_the_number_of_traders_asked_for(int traders)
+    {
+        var plan = TownGenerator.Plan(Flat(), WithTrader(20), Mixer, Biomes, new GridRect(150, 150, 1200, 1200),
+            new TownOptions(Town, 3) { Traders = traders });
+        Assert.Equal(traders, plan.TraderCount);
+        Assert.Equal(traders, plan.Prefabs.Count(p => p.Name == "trader_test"));
+    }
+
+    [Fact]
+    public void A_small_town_gets_its_trader_near_the_middle()
+    {
+        // A trader no district asks for, which RWG's picks would never place.
+        var plan = TownGenerator.Plan(Flat(), WithTrader(24, "trader"), Mixer, Biomes, new GridRect(150, 150, 450, 450),
+            new TownOptions(Town, 3));
+        var trader = Assert.Single(plan.Prefabs, p => p.Name == "trader_test");
+        var bounds = plan.Bounds;
+        var world = Flat();
+        float dx = world.WorldToGrid(trader.Position.X) + 12 - (bounds.X0 + bounds.X1) / 2f;
+        float dz = world.WorldToGrid(trader.Position.Z) + 12 - (bounds.Z0 + bounds.Z1) / 2f;
+        Assert.True(MathF.Sqrt(dx * dx + dz * dz) < 150, $"trader {dx}, {dz} from the middle");
+    }
+
+    [Fact]
+    public void Traders_are_spread_apart()
+    {
+        var plan = TownGenerator.Plan(Flat(), WithTrader(20), Mixer, Biomes, new GridRect(150, 150, 1200, 1200),
+            new TownOptions(Town, 3) { Traders = 3 });
+        var spots = plan.Prefabs.Where(p => p.Name == "trader_test").Select(p => new Vector2(p.Position.X, p.Position.Z)).ToList();
+        Assert.Equal(3, spots.Count);
+        for (int i = 0; i < spots.Count; i++)
+            for (int j = i + 1; j < spots.Count; j++)
+                Assert.True(Vector2.Distance(spots[i], spots[j]) > 150, $"traders {i} and {j} are {Vector2.Distance(spots[i], spots[j]):0} m apart");
+    }
+
+    [Fact]
+    public void A_warning_says_when_no_lot_is_big_enough_for_a_trader()
+    {
+        var plan = TownGenerator.Plan(Flat(), WithTrader(60), Mixer, Biomes, new GridRect(150, 150, 450, 450),
+            new TownOptions(Town, 3) { Traders = 2 });
+        Assert.Equal(0, plan.TraderCount);
+        Assert.Contains(plan.Warnings, w => w.Contains("no lot in this town is big enough"));
+    }
+
+    [Fact]
+    public void Link_roads_can_match_the_street_they_leave_from()
+    {
+        // Every tile's blocks are a 10 m asphalt cross through its middle, so each exit has a 10 m street.
+        string dir = Directory.CreateTempSubdirectory("mapeditor-tiles-").FullName;
+        try
+        {
+            var library = PrefabLibrary.Of(MakeLibrary(dir).ToList());
+            foreach (var info in library.All.Where(p => p.IsStreetTile))
+            {
+                using (var w = new BinaryWriter(File.Create(Path.Combine(dir, info.Name + ".tts"))))
+                {
+                    w.Write("tts\0"u8);
+                    w.Write(19u);
+                    w.Write((short)150);
+                    w.Write((short)1);
+                    w.Write((short)150);
+                    for (int z = 0; z < 150; z++)
+                        for (int x = 0; x < 150; x++)
+                            w.Write(x is >= 70 and < 80 || z is >= 70 and < 80 ? 2u : 1u);
+                }
+                using (var w = new BinaryWriter(File.Create(Path.Combine(dir, info.Name + ".blocks.nim")), System.Text.Encoding.UTF8))
+                {
+                    w.Write(1);
+                    w.Write(2);
+                    w.Write(1);
+                    w.Write("terrDirt");
+                    w.Write(2);
+                    w.Write("terrAsphalt");
+                }
+            }
+
+            var world = Flat();
+            RoadOp.Draw(world, new RoadPath([new(0, 50), new(world.Size, 50)], RoadType.Gravel, 3f, Grade: false), new EditSession("Road"));
+            var selection = new GridRect(150, 150, 1200, 1200);
+            var joined = TownGenerator.Plan(world, library, Mixer, Biomes, selection, new TownOptions(Town, 2));
+            var street = TownGenerator.Plan(world, library, Mixer, Biomes, selection, new TownOptions(Town, 2) { LinkStyle = LinkRoadStyle.Tile });
+
+            Assert.NotEmpty(street.Roads);
+            Assert.All(joined.Roads, r => Assert.Equal((RoadType.Gravel, 3f), (r.Type, r.Radius)));
+            Assert.All(street.Roads, r => Assert.Equal((RoadType.Asphalt, 5f), (r.Type, r.Radius)));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_tile_street_counts_its_shoulder_but_not_gravel_beside_it()
+    {
+        // A north-south street at the south edge: 14 m asphalt, 1 m gravel shoulders, then a wide gravel verge east.
+        var pixels = new uint[150 * 150];
+        uint asphalt = 0xFF3C3C40, gravel = 0xFFB49A6A;
+        for (int row = 0; row < 150; row++)
+            for (int x = 0; x < 150; x++)
+                pixels[row * 150 + x] = x switch
+                {
+                    >= 68 and < 82 => asphalt,
+                    67 or 82 => gravel,
+                    > 82 and < 110 => gravel,
+                    _ => 0,
+                };
+        var street = TownGenerator.StreetAcross(new PrefabTopView(150, 150, pixels), 2);
+        Assert.Equal((RoadType.Asphalt, 8f), street);
+    }
+
+    [Theory]
+    [InlineData(RoadType.Asphalt, 9f, 0f)]
+    [InlineData(RoadType.Asphalt, 9f, 0.6f)]
+    [InlineData(RoadType.Gravel, 4.5f, 0f)]
+    [InlineData(RoadType.Gravel, 2.5f, 1.1f)]
+    public void A_painted_road_is_measured_from_its_pixels(RoadType type, float radius, float angle)
+    {
+        var world = Flat(600);
+        var dir = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
+        var centre = new Vector2(300, 300);
+        RoadOp.Draw(world, new RoadPath([centre - dir * 250, centre + dir * 250], type, radius, Grade: false), new EditSession("Road"));
+
+        // Measured from a pixel at the road's edge, as the link roads do.
+        var across = new Vector2(-dir.Y, dir.X);
+        var edge = centre + across * (radius - 0.5f);
+        var measured = TownGenerator.MeasureRoad(world.Roads!, new Vector2(MathF.Floor(edge.X), MathF.Floor(edge.Y)));
+
+        Assert.NotNull(measured);
+        Assert.Equal(type, measured.Value.Type);
+        Assert.InRange(measured.Value.Radius, radius - 0.5f, radius + 0.5f);
     }
 
     [Theory]
