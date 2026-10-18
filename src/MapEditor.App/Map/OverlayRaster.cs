@@ -93,6 +93,13 @@ public sealed class OverlayRaster
         FillClipped(x1 - 1, y0, x1, y1, colour);
     }
 
+    /// <summary>Fills a rectangle given in DIPs at least one device pixel thick either way (for thin lines).</summary>
+    public void Bar(Rect dips, uint colour)
+    {
+        int x0 = ToPixel(dips.Left), y0 = ToPixel(dips.Top);
+        FillClipped(x0, y0, Math.Max(x0 + 1, ToPixel(dips.Right)), Math.Max(y0 + 1, ToPixel(dips.Bottom)), colour);
+    }
+
     private int ToPixel(double dip) => (int)Math.Floor(Math.Clamp(dip * _dpi, -1e6, 1e6));
 
     private void FillClipped(int x0, int y0, int x1, int y1, uint colour)

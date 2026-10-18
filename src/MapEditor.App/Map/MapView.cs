@@ -7,6 +7,7 @@ using System.Windows.Threading;
 using MapEditor.Core.Edit;
 using MapEditor.Core.GameData;
 using MapEditor.Core.Model;
+using MapEditor.Core.Ops;
 using MapEditor.Core.Rendering;
 
 namespace MapEditor.App.Map;
@@ -35,6 +36,7 @@ public sealed class MapView : FrameworkElement
     private double _scale = 1;
     private Point _origin; // map coords at the control's top-left
     private bool _needsFit;
+    private bool _fitted; // the view has not moved since FitToView
     private Point? _dragStart;
     private Point _dragOrigin;
     private bool _toolDrag;
@@ -52,6 +54,7 @@ public sealed class MapView : FrameworkElement
     private static readonly uint HaloColour = OverlayRaster.Premultiply(Color.FromArgb(170, 0, 0, 0));
     private static readonly Brush DimBrush = Frozen(new SolidColorBrush(Color.FromArgb(120, 0, 0, 0)));
     private readonly OverlayRaster _overlay = new();
+    private readonly OverlayRaster _townOverlay = new(); // its own bitmap: sharing one would wipe the prefab layer
     private static readonly uint LotColour = OverlayRaster.Premultiply(Color.FromArgb(150, 120, 200, 255));
     private static readonly Pen HoverPen = Frozen(new Pen(Brushes.White, 2));
     private static readonly Pen SelectedPen = Frozen(new Pen(new SolidColorBrush(Color.FromRgb(80, 220, 255)), 2.5));
@@ -66,7 +69,8 @@ public sealed class MapView : FrameworkElement
     private static readonly Brush SpawnFill = Frozen(new SolidColorBrush(Color.FromRgb(60, 220, 90)));
     private static readonly Pen SpawnPen = Frozen(new Pen(Brushes.Black, 1));
     private static readonly Pen SpawnFacingPen = Frozen(new Pen(Brushes.White, 2.5) { EndLineCap = PenLineCap.Triangle });
-    private static readonly Brush Background = Frozen(new SolidColorBrush(Color.FromRgb(24, 25, 28)));
+    private static readonly Pen EdgeShadowPen = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(70, 0, 0, 0)), 6));
+    private static readonly Pen EdgePen = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(120, 128, 128, 128)), 1));
     private static readonly Pen CursorPen = Frozen(new Pen(Brushes.White, 1.5));
     private static readonly Pen CursorShadowPen = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(140, 0, 0, 0)), 3.5));
 
@@ -75,14 +79,29 @@ public sealed class MapView : FrameworkElement
         Focusable = true;
         ClipToBounds = true;
         RenderOptions.SetEdgeMode(this, EdgeMode.Aliased);
-        SizeChanged += (_, _) =>
+        SizeChanged += (_, e) =>
         {
-            if (_needsFit) FitToView();
+            // A view still showing the whole world refits; otherwise the point in the middle stays in the middle.
+            if (_needsFit || _fitted) FitToView();
+            else if (e.PreviousSize.Width > 0)
+                _origin = new Point(_origin.X + (e.PreviousSize.Width - e.NewSize.Width) / 2 / _scale,
+                    _origin.Y + (e.PreviousSize.Height - e.NewSize.Height) / 2 / _scale);
             OnViewChanged();
         };
     }
 
     public event EventHandler? ViewChanged;
+
+    /// <summary>What shows around the world (the theme's canvas backdrop).</summary>
+    public Brush Backdrop
+    {
+        get => (Brush)GetValue(BackdropProperty);
+        set => SetValue(BackdropProperty, value);
+    }
+
+    public static readonly DependencyProperty BackdropProperty = DependencyProperty.Register(
+        nameof(Backdrop), typeof(Brush), typeof(MapView),
+        new FrameworkPropertyMetadata(Brushes.DimGray, FrameworkPropertyMetadataOptions.AffectsRender));
 
     /// <summary>Raised with the map coordinate under the mouse, or null when it leaves.</summary>
     public event EventHandler<Point?>? CursorMoved;
@@ -100,7 +119,21 @@ public sealed class MapView : FrameworkElement
         }
     }
 
-    public PrefabLibrary Prefabs { get; set; } = PrefabLibrary.Empty;
+    private PrefabLibrary _prefabs = PrefabLibrary.Empty;
+    private PrefabDetailCache _detail = new(PrefabLibrary.Empty);
+
+    public PrefabLibrary Prefabs
+    {
+        get => _prefabs;
+        set
+        {
+            if (ReferenceEquals(_prefabs, value)) return;
+            _prefabs = value;
+            _detail = new PrefabDetailCache(value);
+            _detail.Built += QueueInvalidate;
+            InvalidateVisual();
+        }
+    }
 
     /// <summary>When true, left-button drags go to <see cref="ToolInput"/>; the middle button still pans.</summary>
     public bool ToolActive { get; set; }
@@ -162,6 +195,17 @@ public sealed class MapView : FrameworkElement
         nameof(ShowPrefabs), typeof(bool), typeof(MapView),
         new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    /// <summary>Draws prefabs from above (roads, pavements, buildings) once they are big enough on screen.</summary>
+    public bool ShowPrefabDetail
+    {
+        get => (bool)GetValue(ShowPrefabDetailProperty);
+        set => SetValue(ShowPrefabDetailProperty, value);
+    }
+
+    public static readonly DependencyProperty ShowPrefabDetailProperty = DependencyProperty.Register(
+        nameof(ShowPrefabDetail), typeof(bool), typeof(MapView),
+        new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender));
+
     /// <summary>Darkens the map under the prefab and spawn overlays so they stand out.</summary>
     public bool DimMap
     {
@@ -192,6 +236,19 @@ public sealed class MapView : FrameworkElement
         set
         {
             _prefabGhost = value;
+            InvalidateVisual();
+        }
+    }
+
+    private TownPreview? _townPreview;
+
+    /// <summary>The Town tool's selection and planned town.</summary>
+    public TownPreview? TownPreview
+    {
+        get => _townPreview;
+        set
+        {
+            _townPreview = value;
             InvalidateVisual();
         }
     }
@@ -263,13 +320,22 @@ public sealed class MapView : FrameworkElement
         int size = _renderer.World.Size;
         SetScale(Math.Min(ActualWidth, ActualHeight) / size * 0.95);
         CenterOn(new Point(size / 2.0, size / 2.0));
+        _fitted = true;
     }
 
     public void CenterOn(Point map)
     {
         _origin = new Point(map.X - ActualWidth / 2 / _scale, map.Y - ActualHeight / 2 / _scale);
+        _fitted = false;
         OnViewChanged();
     }
+
+    /// <summary>Zooms about the middle of the view to <paramref name="scale"/> DIPs per metre (the zoom slider).</summary>
+    public void ZoomTo(double scale) => ZoomAt(new Point(ActualWidth / 2, ActualHeight / 2), scale / _scale);
+
+    public void ZoomBy(double factor) => ZoomAt(new Point(ActualWidth / 2, ActualHeight / 2), factor);
+
+    public static double MaxZoom => MaxScale;
 
     private double MinScale => _renderer is null ? 0.01 : Math.Min(ActualWidth, ActualHeight) / _renderer.World.Size / 4;
 
@@ -285,6 +351,7 @@ public sealed class MapView : FrameworkElement
         var anchor = ScreenToMap(screen);
         SetScale(_scale * factor);
         _origin = new Point(anchor.X - screen.X / _scale, anchor.Y - screen.Y / _scale);
+        _fitted = false;
         OnViewChanged();
     }
 
@@ -346,6 +413,7 @@ public sealed class MapView : FrameworkElement
         if (_dragStart is { } start)
         {
             _origin = new Point(_dragOrigin.X - (p.X - start.X) / _scale, _dragOrigin.Y - (p.Y - start.Y) / _scale);
+            _fitted = false;
             OnViewChanged();
         }
         var map = ScreenToMap(p);
@@ -390,8 +458,13 @@ public sealed class MapView : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
-        dc.DrawRectangle(Background, null, new Rect(RenderSize));
+        dc.DrawRectangle(Backdrop, null, new Rect(RenderSize));
         if (_renderer is null) return;
+
+        // The world sits on the backdrop like a page in Paint: a soft shadow and a thin edge.
+        var world = new Rect(MapToScreen(new Point(0, 0)), MapToScreen(new Point(_renderer.World.Size, _renderer.World.Size)));
+        dc.DrawRectangle(null, EdgeShadowPen, new Rect(world.X + 2, world.Y + 2, world.Width, world.Height));
+        dc.DrawRectangle(null, EdgePen, Rect.Inflate(world, 0.5, 0.5));
 
         double dpi = PixelsPerDip;
         double metresPerDevicePixel = 1 / (_scale * dpi);
@@ -437,6 +510,7 @@ public sealed class MapView : FrameworkElement
         if (DimMap) dc.DrawRectangle(DimBrush, null, new Rect(RenderSize));
         if (ShowPrefabs) DrawPrefabs(dc, visible);
         if (ShowSpawns) DrawSpawns(dc, visible);
+        DrawTownPreview(dc);
         DrawPrefabGhost(dc);
         DrawRoadPreview(dc);
         DrawBrushCursor(dc);
@@ -464,6 +538,93 @@ public sealed class MapView : FrameworkElement
         foreach (var p in points.Take(road.MapPoints.Count))
             dc.DrawEllipse(Brushes.White, CursorShadowPen, p, 3, 3);
     }
+
+    private static readonly uint TownPoiColour = OverlayRaster.Premultiply(Color.FromArgb(255, 255, 200, 90));
+    private static readonly uint TownRemovedColour = OverlayRaster.Premultiply(Color.FromArgb(255, 255, 70, 60));
+    private static readonly uint TownRemovedTint = OverlayRaster.Premultiply(Color.FromArgb(70, 255, 70, 60));
+    private static readonly Pen TownSelectionPen = Frozen(new Pen(Brushes.White, 1.5) { DashStyle = DashStyles.Dash });
+    private static readonly Pen TownStreetPen = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(220, 30, 30, 34)), 3));
+    private static readonly Pen TownRoadPen = Frozen(new Pen(new SolidColorBrush(Color.FromRgb(120, 255, 140)), 3)
+    {
+        StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round,
+    });
+
+    /// <summary>
+    /// The planned town: tiles tinted by district with their streets, POIs (traders in magenta), prefabs it
+    /// replaces in red, link roads in green, and the dragged selection.
+    /// </summary>
+    private void DrawTownPreview(DrawingContext dc)
+    {
+        if (_townPreview is not { } town) return;
+        Rect Screen(Rect map) => new(MapToScreen(map.TopLeft), MapToScreen(map.BottomRight));
+
+        _townOverlay.Begin(ActualWidth, ActualHeight, PixelsPerDip);
+        foreach (var r in town.Removed)
+        {
+            _townOverlay.Fill(Screen(r), TownRemovedTint);
+            _townOverlay.Outline(Screen(r), TownRemovedColour, HaloColour);
+        }
+        foreach (var t in town.Tiles)
+        {
+            var c = t.Colour;
+            _townOverlay.Fill(Screen(t.MapRect), OverlayRaster.Premultiply(Color.FromArgb(105, c.R, c.G, c.B)));
+            _townOverlay.Outline(Screen(t.MapRect), OverlayRaster.Premultiply(Color.FromArgb(255, c.R, c.G, c.B)), HaloColour);
+        }
+        foreach (var r in town.Pois) _townOverlay.Outline(Screen(r), TownPoiColour, HaloColour);
+        foreach (var r in town.Traders)
+        {
+            _townOverlay.Fill(Screen(r), TraderTint);
+            _townOverlay.Outline(Screen(r), TraderColour, HaloColour);
+        }
+        _townOverlay.End(dc, RenderSize);
+
+        // Streets from each tile's middle to its exits, so the layout reads at a glance.
+        foreach (var t in town.Tiles)
+        {
+            var s = Screen(t.MapRect);
+            var centre = new Point(s.X + s.Width / 2, s.Y + s.Height / 2);
+            if ((t.Exits & 1) != 0) dc.DrawLine(TownStreetPen, centre, new Point(centre.X, s.Top));
+            if ((t.Exits & 2) != 0) dc.DrawLine(TownStreetPen, centre, new Point(s.Right, centre.Y));
+            if ((t.Exits & 4) != 0) dc.DrawLine(TownStreetPen, centre, new Point(centre.X, s.Bottom));
+            if ((t.Exits & 8) != 0) dc.DrawLine(TownStreetPen, centre, new Point(s.Left, centre.Y));
+        }
+        foreach (var road in town.Roads)
+            for (int i = 1; i < road.Count; i++)
+                dc.DrawLine(TownRoadPen, MapToScreen(road[i - 1]), MapToScreen(road[i]));
+        // While dragging: the cells the town will take, and the rectangle under the mouse (red if too small).
+        foreach (var c in town.Cells) dc.DrawRectangle(TownCellFill, TownCellPen, Screen(c));
+        if (town.Drag is { } drag)
+        {
+            var s = Screen(drag);
+            dc.DrawRectangle(town.TooSmall ? TownTooSmallFill : null, town.TooSmall ? TownTooSmallPen : TownDragPen, s);
+            if (town.TooSmall)
+            {
+                var text = new FormattedText("Too small: at least 150 × 150 m", System.Globalization.CultureInfo.CurrentUICulture,
+                    FlowDirection.LeftToRight, new Typeface("Segoe UI"), 12, Brushes.White, PixelsPerDip);
+                var at = new Point(s.Left, s.Bottom + 4);
+                dc.DrawRoundedRectangle(TownLabelBackground, null, new Rect(at.X - 4, at.Y - 2, text.Width + 8, text.Height + 4), 3, 3);
+                dc.DrawText(text, at);
+            }
+        }
+        if (town.Selection.Width > 0 && town.Selection.Height > 0)
+        {
+            dc.DrawRectangle(null, CursorShadowPen, Screen(town.Selection));
+            dc.DrawRectangle(null, TownSelectionPen, Screen(town.Selection));
+        }
+    }
+
+    private static readonly Brush TownCellFill = Frozen(new SolidColorBrush(Color.FromArgb(45, 255, 255, 255)));
+    private static readonly Pen TownCellPen = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(200, 255, 255, 255)), 1));
+    private static readonly Pen TownDragPen = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(150, 255, 255, 255)), 1)
+    {
+        DashStyle = DashStyles.Dot,
+    });
+    private static readonly Brush TownTooSmallFill = Frozen(new SolidColorBrush(Color.FromArgb(50, 255, 60, 50)));
+    private static readonly Pen TownTooSmallPen = Frozen(new Pen(new SolidColorBrush(Color.FromRgb(255, 80, 70)), 2)
+    {
+        DashStyle = DashStyles.Dash,
+    });
+    private static readonly Brush TownLabelBackground = Frozen(new SolidColorBrush(Color.FromArgb(200, 120, 20, 20)));
 
     private static readonly Brush RoadAsphaltBrush = Frozen(new SolidColorBrush(Color.FromArgb(150, 40, 40, 46)));
     private static readonly Brush RoadGravelBrush = Frozen(new SolidColorBrush(Color.FromArgb(150, 180, 154, 106)));
@@ -551,13 +712,39 @@ public sealed class MapView : FrameworkElement
         _overlay.Begin(ActualWidth, ActualHeight, PixelsPerDip);
         Rect Screen(Rect map) => new(MapToScreen(map.TopLeft), MapToScreen(map.BottomRight));
 
+        // Prefabs big enough on screen are drawn from above, street tiles first so POIs sit on them. Those keep
+        // their outline but lose the tint, which would wash the picture out.
+        var detailed = new HashSet<PrefabInstance>(ReferenceEqualityComparer.Instance);
+        if (ShowPrefabDetail)
+        {
+            double devicePerMetre = _scale * PixelsPerDip;
+            foreach (bool tiles in new[] { true, false })
+                foreach (var p in world.Prefabs)
+                {
+                    if (p.Name.StartsWith("rwg_tile_", StringComparison.Ordinal) != tiles) continue;
+                    if (Prefabs.Find(p.Name) is not { } info) continue;
+                    var (sx, sz) = info.Footprint(p.Rotation);
+                    if (Math.Min(sx, sz) * devicePerMetre < DetailMinPixels) continue;
+                    var rect = PrefabMapRect(p, half);
+                    if (!rect.IntersectsWith(visible)) continue;
+                    if (_detail.Get(info, p.Rotation) is not { } picture) continue;
+                    dc.DrawImage(picture, Screen(rect));
+                    detailed.Add(p);
+                }
+        }
+
         // Street tiles first, then their lots, then POIs and parts on top.
         foreach (var p in world.Prefabs)
         {
             if (!p.Name.StartsWith("rwg_tile_", StringComparison.Ordinal)) continue;
             var rect = PrefabMapRect(p, half);
             if (!rect.IntersectsWith(visible)) continue;
-            _overlay.Fill(Screen(rect), StreetTileTint);
+            if (!detailed.Contains(p))
+            {
+                _overlay.Fill(Screen(rect), StreetTileTint);
+                // Until its picture shows, a tile's streets are sketched from its shape and turn.
+                if (rect.Width * _scale * PixelsPerDip >= StreetLineMinPixels) DrawStreetLines(p, Screen(rect));
+            }
             _overlay.Outline(Screen(rect), StreetTileColour, HaloColour);
         }
         // Lots are only worth drawing once a 25 m lot is a few pixels across.
@@ -575,7 +762,7 @@ public sealed class MapView : FrameworkElement
                 }
             }
         }
-        var traders = new List<Rect>();
+        var traders = new List<(Rect Rect, bool Detailed)>();
         foreach (var p in world.Prefabs)
         {
             if (p.Name.StartsWith("rwg_tile_", StringComparison.Ordinal)) continue;
@@ -589,17 +776,17 @@ public sealed class MapView : FrameworkElement
             }
             if (Prefabs.Find(p.Name)?.IsTrader == true)
             {
-                traders.Add(rect);
+                traders.Add((rect, detailed.Contains(p)));
                 continue;
             }
-            _overlay.Fill(Screen(rect), PrefabTint);
+            if (!detailed.Contains(p)) _overlay.Fill(Screen(rect), PrefabTint);
             _overlay.Outline(Screen(rect), PrefabColour, HaloColour);
         }
         // Traders last, in their own colour with a double line, so they stand out from the town around them.
-        foreach (var rect in traders)
+        foreach (var (rect, isDetailed) in traders)
         {
             var s = Screen(rect);
-            _overlay.Fill(s, TraderTint);
+            if (!isDetailed) _overlay.Fill(s, TraderTint);
             _overlay.Outline(s, TraderColour, HaloColour);
             if (s.Width > 8 && s.Height > 8) _overlay.Outline(Rect.Inflate(s, -1 / PixelsPerDip, -1 / PixelsPerDip), TraderColour);
             else _overlay.Outline(Rect.Inflate(s, 3, 3), TraderColour, HaloColour); // keep them findable when zoomed out
@@ -652,6 +839,38 @@ public sealed class MapView : FrameworkElement
         int size = _renderer?.World.Size ?? 0;
         int half = size / 2;
         return new Rect(x + half, size - (z + half + sizeZ), sizeX, sizeZ);
+    }
+
+    /// <summary>On-screen size (device pixels, shorter side) at which a prefab is drawn from above.</summary>
+    private const double DetailMinPixels = 40;
+
+    /// <summary>On-screen size (device pixels) at which a street tile without its picture gets sketched streets.</summary>
+    private const double StreetLineMinPixels = 12;
+
+    private static readonly uint StreetLineColour = OverlayRaster.Premultiply(Color.FromArgb(235, 60, 60, 66));
+
+    /// <summary>
+    /// Sketches a street tile's roads: a 10 m line from the middle to each exit, from the tile's shape (the end of
+    /// its name) and its turn, as the town generator lays them out.
+    /// </summary>
+    private void DrawStreetLines(PrefabInstance p, Rect screen)
+    {
+        if (Prefabs.Find(p.Name) is not { } info) return;
+        // The shape is the last word of the name, before any variant number (rwg_tile_industrial_t_03).
+        var words = p.Name.Split('_');
+        int last = words.Length - 1;
+        if (last > 0 && words[last].All(char.IsDigit)) last--;
+        int shape = Array.IndexOf(TownGenerator.ShapeNames, words[last]);
+        if (shape < 0) return;
+        // TileRotation swaps 1 and 3; undo that, then take off the turn that faces the tile north.
+        int turn = (p.Rotation & 3) switch { 1 => 3, 3 => 1, var r => r };
+        int exits = TownGenerator.ShapeExitsAt(shape, (turn - info.RotationToFaceNorth) & 3);
+        double half = Math.Max(5 * _scale, 1 / PixelsPerDip);
+        var c = new Point(screen.X + screen.Width / 2, screen.Y + screen.Height / 2);
+        if ((exits & 1) != 0) _overlay.Bar(new Rect(c.X - half, screen.Top, half * 2, c.Y - screen.Top + half), StreetLineColour);
+        if ((exits & 2) != 0) _overlay.Bar(new Rect(c.X - half, c.Y - half, screen.Right - c.X + half, half * 2), StreetLineColour);
+        if ((exits & 4) != 0) _overlay.Bar(new Rect(c.X - half, c.Y - half, half * 2, screen.Bottom - c.Y + half), StreetLineColour);
+        if ((exits & 8) != 0) _overlay.Bar(new Rect(screen.Left, c.Y - half, c.X - screen.Left + half, half * 2), StreetLineColour);
     }
 
     /// <summary>A prefab's footprint in map coordinates (its position is the south-west min corner in world coords).</summary>

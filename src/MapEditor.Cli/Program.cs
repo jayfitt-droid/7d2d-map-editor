@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using MapEditor.Core.GameData;
 using MapEditor.Core.IO;
+using MapEditor.Core.Model;
 using MapEditor.Core.Ops;
 using MapEditor.Core.Rendering;
+using MapEditor.Core.Validate;
 
 return args switch
 {
@@ -10,6 +12,10 @@ return args switch
     ["roundtrip", var world, var output, .. var rest] => RoundTrip(world, output, overwrite: rest.Contains("--overwrite")),
     ["installs"] => Installs(),
     ["render", var world, var output, .. var rest] => Render(world, output, rest.Length > 0 ? int.Parse(rest[0]) : -1),
+    ["export", var project, var output, .. var rest] => Export(project, output, overwrite: rest.Contains("--overwrite")),
+    ["validate", var source] => Validate(source),
+    ["compare", var a, var b] => Compare(a, b),
+    ["topview", var output, .. var names] when names.Length > 0 => TopView(output, names),
     ["new", var output, .. var rest] => New(output, rest.Length > 0 ? int.Parse(rest[0]) : 4096, rest.Length > 1 ? rest[1] : "LLLL"),
     _ => Usage(),
 };
@@ -25,6 +31,14 @@ static int Usage()
             List detected 7 Days to Die installs.
         mapeditor-cli render <worldFolder> <out.png> [level]
             Render the editor's map view (default: 2 levels below the top) to a PNG.
+        mapeditor-cli export <project.7dmap> <outFolder> [--overwrite]
+            Write a project as a game world folder.
+        mapeditor-cli validate <worldFolder|project.7dmap>
+            List problems: spawns, traders, prefab overlaps, water and bounds.
+        mapeditor-cli compare <worldFolder|project.7dmap> <worldFolder|project.7dmap>
+            Compare every layer, prefab and spawn of two worlds.
+        mapeditor-cli topview <out.png> <prefab>[:rotation] [...]
+            Draw prefabs from above, as the map's prefab detail shows them, side by side (4 px per block).
         mapeditor-cli new <outFolder> [size] [edges]
             Create a blank world. edges = 4 letters for N,E,S,W: L land, W water, N none (default LLLL).
         """);
@@ -49,6 +63,54 @@ static int New(string output, int size, string edges)
         stamps, File.ReadAllBytes(template.Path));
     WorldWriter.Write(world, output);
     Console.WriteLine($"Created {size}x{size} world in {sw.Elapsed.TotalSeconds:0.0} s (main.ttw from {template.Path}, {template.GameVersion})");
+    return 0;
+}
+
+static int TopView(string output, string[] names)
+{
+    var installPath = GameInstall.FindCandidates().FirstOrDefault();
+    if (installPath is null)
+    {
+        Console.Error.WriteLine("No game install found.");
+        return 1;
+    }
+    var library = PrefabLibrary.Load(GameInstall.Open(installPath));
+    const int scale = 4, gap = 8;
+    var views = new List<PrefabTopView>();
+    foreach (var arg in names)
+    {
+        var parts = arg.Split(':');
+        if (library.Find(parts[0]) is not { } info)
+        {
+            Console.Error.WriteLine($"No prefab named {parts[0]}");
+            return 1;
+        }
+        var sw = Stopwatch.StartNew();
+        var view = PrefabTopViewReader.Read(Path.Combine(info.Folder, info.Name + ".tts"), info.YOffset);
+        if (view is null)
+        {
+            Console.Error.WriteLine($"Could not read {info.Name}");
+            return 1;
+        }
+        Console.WriteLine($"{info.Name}: {info.Size.X}x{info.Size.Y}x{info.Size.Z} in {sw.ElapsedMilliseconds} ms");
+        views.Add(view.Turned(parts.Length > 1 ? int.Parse(parts[1]) : 0));
+    }
+    int width = views.Sum(v => v.Width * scale + gap), height = views.Max(v => v.Height) * scale;
+    var image = new byte[width * height * 4];
+    int left = 0;
+    foreach (var v in views)
+    {
+        for (int y = 0; y < v.Height * scale; y++)
+            for (int x = 0; x < v.Width * scale; x++)
+            {
+                uint c = v.Pixels[y / scale * v.Width + x / scale];
+                int o = (y * width + left + x) * 4;
+                (image[o], image[o + 1], image[o + 2], image[o + 3]) = c == 0 ? ((byte)40, (byte)90, (byte)40, (byte)255)
+                    : ((byte)(c >> 16), (byte)(c >> 8), (byte)c, (byte)255);
+            }
+        left += v.Width * scale + gap;
+    }
+    Png.WriteRgba(output, width, height, image);
     return 0;
 }
 
@@ -117,6 +179,41 @@ static int RoundTrip(string folder, string output, bool overwrite)
     var differences = WorldComparer.Compare(original, copy);
     foreach (var d in differences) Console.WriteLine("DIFF   " + d);
     Console.WriteLine(differences.Count == 0 ? "OK     all layers identical" : $"FAIL   {differences.Count} difference(s)");
+    return differences.Count == 0 ? 0 : 1;
+}
+
+static World Load(string source) =>
+    File.Exists(source) && source.EndsWith(ProjectStore.Extension, StringComparison.OrdinalIgnoreCase)
+        ? ProjectStore.Load(source)
+        : WorldReader.Read(source);
+
+static int Export(string project, string output, bool overwrite)
+{
+    var sw = Stopwatch.StartNew();
+    var world = ProjectStore.Load(project);
+    world.Name = Path.GetFileName(Path.GetFullPath(output));
+    WorldWriter.Write(world, output, new WorldWriteOptions { Overwrite = overwrite, NewLevelGuid = true });
+    Console.WriteLine($"Exported {world.Name} in {sw.Elapsed.TotalSeconds:0.0} s");
+    return 0;
+}
+
+static int Validate(string source)
+{
+    var world = Load(source);
+    var installPath = GameInstall.FindCandidates().FirstOrDefault();
+    var library = installPath is null ? PrefabLibrary.Empty : PrefabLibrary.Load(GameInstall.Open(installPath));
+    var issues = WorldValidator.Validate(world, library);
+    foreach (var i in issues)
+        Console.WriteLine($"{i.Severity,-8} {i.Message}{(i.HasLocation ? $"  (at {world.GridToWorld(i.X!.Value)}, {world.GridToWorld(i.Z!.Value)})" : "")}");
+    Console.WriteLine(issues.Count == 0 ? "No problems found." : $"{issues.Count} issue(s).");
+    return issues.Any(i => i.Severity == IssueSeverity.Error) ? 1 : 0;
+}
+
+static int Compare(string a, string b)
+{
+    var differences = WorldComparer.Compare(Load(a), Load(b));
+    foreach (var d in differences) Console.WriteLine("DIFF   " + d);
+    Console.WriteLine(differences.Count == 0 ? "OK     identical" : $"FAIL   {differences.Count} difference(s)");
     return differences.Count == 0 ? 0 : 1;
 }
 

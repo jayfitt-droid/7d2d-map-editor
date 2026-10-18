@@ -1,73 +1,158 @@
 # Handoff: 7 Days to Die Map Editor
 
-Last updated 2026-10-16. The last commit is `1b08f09` "Add prefab and spawn tools (milestone 7, part 1)" on `main`; tag `v0.1.1` is at `bdacad4`. **The town generator is uncommitted** (files below). There's no git remote.
+Last updated 2026-10-18. Tag `v0.1.2` is at `f4d4509`, and `v0.1.1` is at `bdacad4`. There's no git remote.
+
+**Everything since `v0.1.2` is in one commit on `main`, which isn't tagged:** the town generator (M7), all of M8 and M9, and the fixes from the user's testing (listed under Changes Made). The user is still testing. Don't tag `v1.0.0` until they ask.
 
 ## Goal
 
-This is a Windows desktop app (C# + WPF on .NET 10, CommunityToolkit.Mvvm, xUnit) for building 7 Days to Die (v3.3) worlds. It can edit an existing world or author one from scratch, and it writes a world folder the game loads directly. It does not use the in-game generator (RWG) or the biome-brush mod.
+This is a Windows desktop app (C# + WPF on .NET 10, CommunityToolkit.Mvvm, xUnit) for building 7 Days to Die (v3.3) worlds. It edits an existing world or authors one from scratch, and it writes a world folder the game loads directly. It does not use the in-game generator (RWG) or the biome-brush mod.
+
+`PLAN.md` has 9 milestones, a **Status** section and a **Decided** section. All nine milestones are done in code. The current aim is to get the user's in-game sign-off, fix what they find, commit, and ship **v1.0**.
 
 Rules agreed with the user:
-- **Public release:** never bundle game assets. Read stamps, prefabs, `biomes.xml` and `rwgmixer.xml` from the user's install at runtime. Reimplement behaviour from the decompiled code; never copy it in.
-- **The plan:** `PLAN.md` in the repo (a copy of `C:\Users\Jason\.claude\plans\glittery-munching-pudding.md`) has 9 milestones. M1–M6 are done. **M7 (POIs and spawns) is nearly done.** M8 covers the `.7dmap` format, validation, the export dialog, and the installer. M9 is UI polish: a Paint-style layout with a ribbon, palette, side sliders and a status bar. v1.0 ships after M9.
-
-**How the user works:** they try each change in the app, then in a new game, and report back. **Commit only when they ask.** Never add `Co-Authored-By` or other attribution lines to commit messages. Use the task-list and wrap-up tools, and keep replies short.
+- **Public release:** never bundle game assets. Read stamps, prefabs, `biomes.xml` and `rwgmixer.xml` from the user's install at runtime. Reimplement behaviour from the decompiled code (`D:\dotPeek Test\Assembly-CSharp\`); never copy it in.
+- **How the user works:** they try each change in the app, then in a new game, and report back.
+  - Commit only when they ask. Never add `Co-Authored-By` or other attribution lines to commit messages.
+  - Use the task-list and wrap-up tools, and keep replies short.
+  - **Simple visual fixes:** build and let the user check them; don't launch and drive the app to verify them (their words: "to save tokens"). It's saved in memory as `user-verifies-simple-ui`. Do check in the app yourself for alignment, performance, or anything they can't easily judge.
 
 ## Current State
 
-- **Committed and checked in game:** the Prefabs tool (I) and the Spawn points tool (H).
-- **Committed, not yet confirmed in game by the user:** the prefab info card (Q/E, PgUp/PgDn, Replace, Delete), haloed outlines, "Dim the map", magenta traders, and POIs carrying their parts.
-- **New this session, uncommitted, not yet tried by the user in the app or in game: the Town tool (G).**
-  - Drag a rectangle. The town fills the whole 150 m cells inside it and shows as a preview: district tints, streets, POI outlines (traders in magenta), the prefabs it replaces in red, and link roads in green.
-  - Panel: township (defaults by biome at the centre and by cell count against `TownshipType.Tiles`), seed with Reroll, "Replace prefabs in the way", "Join exits to the nearest road", "Add street furniture and props". Any change plans again.
-  - Build (Enter) applies it as one undo step; Esc cancels.
-  - 78 tests pass (13 new in `TownTests.cs`). The app builds. No screen check yet: the user declined computer-use access this session.
-- There's a stray `HANDOFF - Copy.md` that the user made; leave it alone.
+- **The user is testing** with the Debug build at `src\MapEditor.App\bin\Debug\net10.0-windows\MapEditor.exe`. It is up to date with every change below.
+- **Confirmed in the app by the user:**
+  - The Town tool anchoring and snapping ("it does": a town drawn against a road now sits flush with it).
+  - The New World dialog fix, the No-preview placeholder, Open Recent and the shortcuts window. They reported nothing further on these.
+- **Not yet confirmed:**
+  - Prefab detail on the map, including whether panning is smooth in a dense city.
+  - Link roads avoiding prefabs and other towns.
+  - The straight link-road fix.
+  - All of M8/M9 in game: projects, autosave, validation, export, installer, the Paint-style UI.
+  - M7 in game: tiles lining up, POI heights, gateways meeting roads, no errors in the log.
+- **Tests:** 97 pass (`dotnet test MapEditor.slnx`). The whole solution builds with no warnings.
+- **Release build:** `out/releases` predates all of this and must be rebuilt before shipping.
+- **Clean-up:** none of my editor instances are running. I restored the user's `%APPDATA%\7D2DMapEditor\settings.json` after my test launches: LastWorldFolder and RecentFiles point at the scratch `Mezawoku Mountains.7dmap`. The prefab detail cache at `%LOCALAPPDATA%\7D2DMapEditor\PrefabDetail` holds about 400 small PNGs; that's expected.
 
-## Files touched this session
+## Active/Touched Files
 
 All paths are relative to `C:\Users\Jason\Projects\7d2d\MapEditor`.
 
-- `src/MapEditor.Core/Ops/TownGenerator.cs` (new):
-  - `TownOptions`, `TownTile` (cell, district, exit bits 0 N/1 E/2 S/3 W, `ExitPoint` = `HighwayExitFromDir`), `TownPlan`.
-  - `Plan` → `LayOut` (core/outskirts/districts/gateways/exits) → `PlanRoads` → `Filler` (tiles, lots, parts). `Apply` does the world edit.
-  - Public helpers used by tests: `ShapeFor`, `ShapeExitsAt`, `TileRotation`, `AssignDistricts`, `CentreTile`, `TownGround`, `CellsIn`, `DefaultTownship`, `BiomeTag(At)`.
-- `src/MapEditor.Core/Ops/PrefabPlacer.cs`: new `LotSpot` (shared by `FindLot` and the generator). `MarkerParts` takes an optional shared `taken` list (RWG keeps part bounds per street tile).
-- `src/MapEditor.App/Editing/TownToolController.cs` (new); `EditorTool.Town`; VM town properties (`Mixer`, `Townships`, `SelectedTownship`, `TownSeed`, `TownReplace`, `TownRoads`, `TownParts`, `TownText`, `HasTownPlan`); `MapView.TownPreview` + `DrawTownPreview`; `TownPreview`/`TownTilePreview` records in `ToolInput.cs`; the panel in `MainWindow.xaml`; `LoadMixer()` in `MainWindow.xaml.cs` (reads rwgmixer.xml for the open world's size).
-- `tests/MapEditor.Core.Tests/TownTests.cs` (new).
-- `docs/RWG-Research.md` §3 item 6: town facts.
+**This session and the last one:**
+- `src/MapEditor.Core/GameData/PrefabTopView.cs` (new):
+  - `PrefabTopViewReader.Read(ttsPath, yOffset)` parses the `.tts` file and its `.blocks.nim` name map.
+  - `Classify` sorts block names into colours.
+  - `PrefabTopView.Turned(rotation)` turns the picture the way `PrefabMarker.TurnedOnce` turns markers.
+- `src/MapEditor.App/Map/PrefabDetailCache.cs` (new): builds pictures in the background (2 workers, newest request first). It keeps them in memory and in the disk cache at `%LOCALAPPDATA%\7D2DMapEditor\PrefabDetail\{name}-{ticks^length:x}.png`. `Get(info, rotation)` returns null while a picture is being built, and raises `Built` when it's done.
+- `src/MapEditor.App/Map/MapView.cs`:
+  - `Prefabs` is now a property with a backing field, so setting it makes a new `PrefabDetailCache`.
+  - New `ShowPrefabDetail` dependency property.
+  - `DrawPrefabs` draws the pictures first (tiles, then POIs) for prefabs whose shorter side is 40 device pixels or more on screen (`DetailMinPixels`). Pictured prefabs skip the tint fill.
+  - `DrawStreetLines` sketches a tile's streets from its shape and rotation when the tile is 12–40 device pixels on screen.
+  - `DrawTownPreview` now also draws the drag cells, the drag rectangle, and the red "too small" box and label.
+- `src/MapEditor.App/Map/OverlayRaster.cs`: new `Bar` method, a fill at least 1 px thick.
+- `src/MapEditor.App/Map/ToolInput.cs`: `TownPreview` gains `Drag`, `Cells` and `TooSmall`.
+- `src/MapEditor.App/Editing/TownToolController.cs`:
+  - `Snapped(start, end, worldSize)` snaps the drag to whole cells from the start corner and keeps it inside the world.
+  - New `_drag` field. A drag that's too small keeps the red box until Esc or the next drag.
+  - New tool hint and size text.
+- `src/MapEditor.Core/Ops/TownGenerator.cs`:
+  - `TownTile(cx, cz, originX, originZ)` and `TownPlan.OriginX/OriginZ`. Cells now count from the selection corner: `CellsIn`, `Plan`, `RoadPixels`.
+  - `PlanRoads(..., obstacles)` keeps link roads clear of prefabs that stay and of other towns. It uses `NearestWhere` and `SegmentHits` (a Liang–Barsky test), with a clearance of the road radius plus its blend distance.
+  - The town's `Removed` list is now worked out before `PlanRoads`.
+- `src/MapEditor.Core/Ops/PrefabPlacer.cs`: the new `TileGridOffset` makes hand-placed street tiles follow the nearest street tile's grid, and `SpotAt` uses it.
+- `src/MapEditor.App/AppSettings.cs`: `RecentFiles` (10 at most) and `AddRecent`. On load, the list is seeded from `LastWorldFolder`.
+- `src/MapEditor.App/MainWindow.xaml(.cs)`:
+  - File > Open Recent (`RecentMenu`, filled by `FileMenu_SubmenuOpened`, opened by `RecentItem_Click`). `AddRecent` runs in `OpenProjectAsync`, `OpenWorldAsync` and `SaveProjectAsync`.
+  - `ShowShortcuts` opens one `ShortcutsWindow` that doesn't block the editor.
+  - Layers popup: new "Prefab de_tail when zoomed in" checkbox.
+- `src/MapEditor.App/ShortcutsWindow.xaml(.cs)` (new): grouped key-caps in a WrapPanel, 800×620. Esc or F1 closes it.
+- `src/MapEditor.App/NewWorldDialog.xaml`: the local styles are now `BasedOn` the theme's styles, the edges are a 2×2 grid, and the error text uses `SystemFillColorCriticalBrush`.
+- `src/MapEditor.App/App.xaml`: new `PrefabPreview` ContentControl style (picture, or a "No preview image" box). It's used for the browser preview and the info card in `MainWindow.xaml`.
+- `src/MapEditor.App/MainViewModel.cs`: new `ShowPrefabDetail` property.
+- `src/MapEditor.Cli/Program.cs`: new `topview <out.png> <prefab>[:rotation] ...` verb.
+- Tests:
+  - New `tests/MapEditor.Core.Tests/PrefabTopViewTests.cs`.
+  - `TownTests.cs`:
+    - New `Covering` helper.
+    - New tests: `Link_roads_keep_out_of_a_neighbouring_town`, `Cells_start_at_the_selection_corner`, `A_street_tile_placed_by_hand_follows_the_grid_of_the_town_beside_it`.
+- `PLAN.md`: the new **Decided** section records the town placement decision.
 
-## How the generator works (ported from `D:\dotPeek Test\Assembly-CSharp\WorldGenerationEngineFinal\`)
+**Earlier uncommitted work:** M7, M8 and M9. See `PLAN.md` Status and the git status for those files (`ProjectStore.cs`, `Validate/`, `ExportDialog`, `Updates.cs`, `Program.cs`, `Icons.cs`, `build/release.ps1`, `.github/workflows/release.yml`, and others).
 
-- **Cells:** whole 150 m cells in the selection. Cells with standing water are left out. Cells with prefabs are left out unless replacing; when replacing, every prefab overlapping a town tile is removed.
-- **Rings:** the outer ring of cells is kept for gateways and the next for outskirts (core = cells with all cells within 2 selected; then 1; then all). Without this, a rectangle left almost no room for gateways (1 instead of RWG's ~7).
-- **Outskirts** (`TownPlanner.Grow`), **districts** (`DistrictPlanner.GenerateDistricts`), **gateways** (`GenerateGatewayDir`, ×2 for citybig), **exits** (removal between districts, `ChangeLConnectionToCap` once per kind): as in RWG.
-- **Gateways** always get the exit opposite their town street, because no gateway cap prefab exists. A lone roadside tile runs its street along the axis towards the nearest road. A town with no gateway opens the outer edge nearest a road.
-- **Link roads:** from each open exit to the nearest road pixel ahead of it within 2 km (points: exit, 40 m out, the road). Asphalt radius 9 for town/city/citybig/wasteland_city/bforest_town, else gravel 4.5. Graded with `RoadOp.Draw`.
-- **Tiles:** `rwg_tile_` + district prefab name + shape, random among library prefabs with that prefix within `TileCounts` max (min count boosts). Rotation = (shape rotations + RTFN) & 3 with 1↔3 swapped. Ground = ceil(avg of 9 samples) + 3; tile y = `PrefabY`.
-- **Lots:** RWG's `SpawnMarkerPartsAndPrefabs` and `GetPrefabWithDistrict` (density budget, lot size rules, theme and name repeat distances, spawn adjust scores, retries at +8/0.3 and 18/0). Gateways also get `part_highway_transition` on sides with a street into town.
-- **Apply:** remove what's in the way; clear splat3 roads in tile cells (RWG has none there); flatten each tile to the ground (blend 50 or 110 m); add prefabs; draw link roads.
-- Seeds use `System.Random` and a fixed FNV hash, so the same seed gives the same town on every run. It is not bit-exact with RWG (which uses `GameRandom`).
+## Changes Made
 
-## Checks against RWG (Mezawoku Mountains, v3.30.18)
+1. **No-preview placeholder.** Prefabs without a `.jpg`, such as the 150 m `part_road_*` tiles, show a "No preview image" box. The game ships no image for these.
+2. **Open Recent** on the File menu, with entries numbered for Alt+F, R, 1–9. A missing entry offers to remove itself, and there's a Clear Recent List item.
+3. **The Keyboard Shortcuts window** is now styled like the app.
+4. **New World dialog:**
+   - Its own TextBox/ComboBox styles had replaced the Fluent theme's styles, so the Biome list was drawn light-on-white and looked empty. Fixed with `BasedOn`.
+   - The edge boxes then got too narrow, so they're now a 2×2 grid.
+5. **Straight link roads.** After the 40 m lead, a link road heads for the road nearest the end of the lead, not the road nearest the exit. Before, it hooked out and slanted back.
+6. **Link roads keep clear of prefabs and other towns.** When there's no clear path, the exit is left unjoined with the warning "N town exits left unjoined: prefabs or another town are in the way". The user's road that ran through a POI and was "very hilly" in game came from this. The hills were almost certainly the POI's own ground painted with road texture; I didn't confirm that in game.
+7. **Prefab detail on the map** (options 1 and 2 of the plan the user chose):
+   - Close up: top-down pictures of tiles and POIs, built from their block data.
+   - Mid zoom: street lines sketched from each tile's shape.
+   - A Layers toggle switches it off.
+   - Measured: Mezawoku's 1,158 different prefabs build in 3.2 s total on one thread (about 10 ms for a full street tile), using 13 MB of pixels.
+   - Checked on Mezawoku that the pictures line up and turn correctly: tile streets meet each other and meet the splat roads.
+8. **Town placement (option 1):**
+   - Cells start at the drag's start corner, so the town sits flush with what was drawn. The user confirmed this in the app.
+   - The drag snaps to whole 150 m cells, and the cells show while dragging.
+   - A drag that's too small turns red with a note.
+   - Hand-placed street tiles follow the nearest town's grid.
 
-- Scratch scripts in `C:\Users\Jason\AppData\Local\Temp\claude\C--Users-Jason-Projects-7d2d-MapEditor\281a6e77-6a0b-4dd3-89a2-8219715a23cf\scratchpad\towncheck\` (.NET file-based, `#:project` the Core csproj; they may be gone):
-  - `districts.cs <world>`: re-plans every town's districts from its own tiles. 89.2% of core tiles match (730/818); 18 of 25 towns match fully.
-  - `gen.cs <world> <township> <town index> <seed>`: replans a town's bounding box. A 135-cell city: RWG 136 tiles, 653 POIs, 592 parts, 3 traders; ours 129 tiles, 616 POIs, 570 parts, 2 traders, 4 gateways and 4 link roads. Plan 0.2 s, apply 0.6 s.
-  - `splat.cs`: showed splat3 is empty under RWG town tiles.
+## Failed Attempts & Gotchas
 
-## Failed attempts and gotchas
+- **Implicit styles in dialogs must be `BasedOn="{StaticResource {x:Type ComboBox}}"`** (the same for TextBox). Without it the control drops the Fluent template: old-style boxes, and invisible light text in the drop-down list. Don't base a TextBlock style on `{x:Type TextBlock}` (the theme may not define one).
+- **Fluent controls are wider and taller.** A layout that fitted the old controls, such as four combos in a row, may clip.
+- **Block data (`.tts`):**
+  - Layout: `"tts\0"`, a uint version, then int16 size x, y, z, then size×4 bytes of blocks, stored x fastest, then y, then z.
+  - The block type is the low 16 bits from version 18 on, and the low 15 bits before that. Vanilla v3.3 has versions 13–19, about 40% of them below 18.
+  - `.blocks.nim` layout: an int version, an int count, then (int id, a .NET `ReadString` name) pairs.
+  - `terrainFiller` means "keep the ground", so draw it transparent.
+- **Skip words in `PrefabTopViewReader.Classify`:** match "tree" with `StartsWith` only, because "street" contains it. Use "carwreck", not "car".
+- **Street tile names can end in a variant number** (`rwg_tile_industrial_t_03`). Strip it before matching the shape. Shapes: straight, t, intersection, cap, corner.
+- **A tile's rotation and its exits:** `TileRotation` swaps 1 and 3. To get exits from a placed tile, swap back, subtract `RotationToFaceNorth`, then use `ShapeExitsAt`.
+- **Bash heredocs holding C# or Python with quotes often fail** with "unexpected EOF". Write the edit script to the scratchpad and run `python -I <file> <args>`.
+- **Window captures:** an always-on-top window from another app covers the middle of the screen in computer-use screenshots.
+  - Use F12 in the editor, which saves `%TEMP%\mapeditor-snapshot.png` (software-rendered).
+  - Or use PrintWindow from a DPI-aware process. The screen is a 4K display at 150% scaling, so call `SetProcessDPIAware` or the capture comes out cropped.
+  - UI Automation (`ValuePattern`, `SelectionItemPattern`, `TransformPattern.Move`) is more reliable than typing. Clipboard typing fails without a clipboard grant.
+- **Launching the editor with a world path changes the user's `LastWorldFolder` and `RecentFiles`.** Restore them afterwards.
+- **Build locks:** a running `MapEditor.exe` locks `bin/`. Check `Get-Process MapEditor`, never kill the user's editor, and build with `-p:OutDir=<scratchpad>\appbuild\` to check compiles.
+- **Carried over from the earlier handoff:**
+  - App.xaml must keep `StartupUri`.
+  - Each overlay needs its own `OverlayRaster`.
+  - Call `InvalidateRequerySuggested` after `IsBusy` changes.
+  - Write `System.Windows.Threading.Dispatcher.Yield`, not `Dispatcher.Yield`.
+  - Don't use `HashCode` for seeds.
+  - In-game tests need a **new game**.
+  - Validate against v3.x worlds such as Mezawoku, not Alpha 21 ones.
+  - When testing exports, write to the scratchpad, never over the user's worlds.
 
-- **Old worlds:** worlds made in Alpha 21 ("Vafuru Valley", "Zezepexe County") have different YOffsets. Validate only against v3.x worlds such as **Mezawoku Mountains**. Govosare Valley is v3.2, and its parts differ.
-- **Overlapping lots:** `FindLot` picks the smallest lot that fits.
-- **Build locks:** a running `MapEditor.exe` locks `bin/`. **Never kill the user's editor.** Build with `-p:OutDir=<scratchpad>\appbuild\` instead. Check first with `tasklist //FI "IMAGENAME eq MapEditor.exe"`. At the end of this session an editor I launched on the scratch Mezawoku copy (`8f2dd0dc-...\scratchpad\worlds\Mezawoku Mountains`) was still open, with no user changes.
-- `HashCode.Combine` is randomised per process; don't use it for seeds.
-- **Shell:** inline `python - <<'EOF'` heredocs mostly work now; if one fails with "unexpected EOF", write the script to the scratchpad and run it with `python -I <file>`.
-- **Computer use:** request "MapEditor.exe" only after the app is running; ask first, the user may decline. Use `left_mouse_down`, `mouse_move` steps and `left_mouse_up` for drags. Don't drive the screen while the user is using the editor or playing.
-- **Saved games:** they keep generated chunks, so in-game tests need a **new game**.
+## Next Steps
 
-## Next steps
-
-1. The user tries the Town tool in the app, then builds a town and checks it in a new game (street tiles line up, POIs sit in lots at the right height, gateways meet the link roads, no log errors). Fix what they report.
-2. Then ask whether to commit it ("Add town generator (milestone 7, part 2)").
-3. Possible follow-ups: RWG's +25 m snow / +12 m wasteland town lift as an option; a background thread for planning very large selections; town names (`RandomCountyNameGenerator`) if the game shows them.
-4. Then finish M7 and move on to M8 (validation, `.7dmap`, export dialog, installer).
+1. **Wait for the user's test results and fix what they report.** Things still to check:
+   - **Prefab detail:** panning smoothness in a dense city. If it stutters, raise `DetailMinPixels`, or move the pictures into the terrain tiles, which needs tile invalidation on prefab edits.
+   - Link roads in game.
+   - Towns in game: tiles, POI heights, gateways, the log.
+   - Projects, autosave, validation and export.
+2. **Open question:** traders. Earlier city plans in the forest had 0 traders, but a recent town got 2. If towns without traders keep turning up, look at `Filler` and the `GetPrefabWithDistrict` port in `TownGenerator`.
+3. **When the user asks, commit in parts.** A suggested split:
+   - "Add town generator (milestone 7, part 2)": the township fix, link-road fixes and town anchoring.
+   - "Add projects, validation, export and installer (milestone 8)": also Open Recent.
+   - "Rework the main window in a Paint-style layout (milestone 9)": also the shortcuts window, the dialog fixes and the no-preview box.
+   - "Show prefabs from above on the map": `PrefabTopView`, `PrefabDetailCache`, the street lines and the CLI `topview` verb.
+4. **For v1.0:**
+   - Update PLAN.md's Status section.
+   - Add a git remote and set `Updates.BuiltInFeed` to its releases URL.
+   - The user should read the game EULA.
+   - Rebuild with `build/release.ps1`, or tag `v1.0.0` and let the workflow publish.
+5. **Testing setup:** the scratch world copies are in `C:\Users\Jason\AppData\Local\Temp\claude\C--Users-Jason-Projects-7d2d-MapEditor\b1dc4d9c-0928-4b9f-8767-755617d04eda\scratchpad\worlds\`: `Mezawoku Mountains/` and `Mezawoku Mountains.7dmap`. If they're gone, copy `%APPDATA%\7DaysToDie\GeneratedWorlds\Mezawoku Mountains` into the new session's scratchpad.
+6. **Possible follow-ups:**
+   - RWG's town lift (+25 m in snow, +12 m in wasteland) as an option.
+   - Planning large town selections on a background thread.
+   - Town names.
+   - Code signing for the installer.
+   - A warning when the chosen township doesn't suit the biome or size.
+   - Tuning `Classify` colours and skip words as the user looks at more prefabs.

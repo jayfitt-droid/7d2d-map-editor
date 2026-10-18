@@ -29,6 +29,9 @@ public sealed class Grid<T> where T : unmanaged
 
     public void MarkChanged() => Version++;
 
+    /// <summary>A copy of the samples that keeps <see cref="Version"/>, so "unedited since load" survives.</summary>
+    public Grid<T> Clone() => new(Width, Height, (T[])Data.Clone()) { Version = Version };
+
     public T this[int x, int z]
     {
         get => Data[x + z * Width];

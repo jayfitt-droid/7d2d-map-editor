@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace MapEditor.App.Map;
 
@@ -32,3 +33,25 @@ public sealed record BrushCursor(double SizeMetres, bool Square = false, double 
 /// (0 north, 1 west, 2 south, 3 east; -1 unknown), whether it has warnings, and the lot it snaps into.
 /// </summary>
 public sealed record PrefabGhost(Rect MapRect, int Front, bool Warning, Rect? Lot = null, bool LotFits = true);
+
+/// <summary>A planned town tile: its cell in map coordinates, its district's preview colour and its street exits (bit 0 north, then clockwise).</summary>
+public sealed record TownTilePreview(Rect MapRect, Color Colour, int Exits);
+
+/// <summary>
+/// The Town tool's selection and, once planned, the town it would build: tiles, POIs and traders, the prefabs it
+/// replaces, and the link roads (all in map coordinates). While dragging, <see cref="Drag"/> is the rectangle
+/// under the mouse and <see cref="Cells"/> the whole 150 m cells it snaps to; <see cref="TooSmall"/> when it
+/// holds none.
+/// </summary>
+public sealed record TownPreview(
+    Rect Selection,
+    IReadOnlyList<TownTilePreview> Tiles,
+    IReadOnlyList<Rect> Pois,
+    IReadOnlyList<Rect> Traders,
+    IReadOnlyList<Rect> Removed,
+    IReadOnlyList<IReadOnlyList<Point>> Roads)
+{
+    public Rect? Drag { get; init; }
+    public IReadOnlyList<Rect> Cells { get; init; } = [];
+    public bool TooSmall { get; init; }
+}

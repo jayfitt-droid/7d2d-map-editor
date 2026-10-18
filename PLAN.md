@@ -66,9 +66,21 @@ tests/MapEditor.Core.Tests/
 
 Each milestone ends with a world that loads in game.
 
+## Status (2026-10-16)
+- **M1–M6:** done and checked in game.
+- **M7:** done. The Town tool plans and builds RWG-style towns, checked in the editor. Still to do: build a town and play a new game on it.
+- **M8:** done in code. `.7dmap` projects (`ProjectStore`): Ctrl+S saves the project, a world opened from a folder still saves back to that folder, and autosave runs every 5 minutes with recovery on the next start. `WorldValidator` checks spawns, traders, POI overlaps, flooded POIs, bounds, unknown prefabs, `main.ttw` and size; it feeds the Issues panel (F7, double-click jumps to the issue) and the Export dialog (Ctrl+E). The Velopack installer, portable zip and update feed come from `build/release.ps1` and from a `v*` tag on GitHub Actions. The README is updated. CLI verbs: `export`, `validate`, `compare`. Still to do: give `Updates.BuiltInFeed` a release URL once the repo has a remote, and read the game EULA.
+- **M9:** done. The Fluent theme (`ThemeMode="System"`) follows Windows light/dark. Departures from the list above:
+  - The icons are this app's own vector line icons (`Icons.cs`), not Segoe Fluent Icons, so every tool has a fitting picture.
+  - The ribbon groups are Navigate, Terrain, Paint, Build, Palette, Layers and World.
+  - The palette always shows every biome and both road surfaces; clicking one picks it and switches to its tool. Radiation is paint/erase only, so it has no levels to show.
+  - Checked at 1366×768 and in the light and dark themes.
+- **v1.0:** waiting on the in-game checks above. `<Version>` is already 1.0.0 in `Directory.Build.props`; then tag `v1.0.0` and run the release.
+
 ## Verification
 - `dotnet test`: round-trip, orientation, stamp blend against hand-computed cases, road raster widths, prefab Y maths.
 - `MapEditor.Cli roundtrip "<GeneratedWorlds>/Vafuru Valley" out/`, then compare files.
+- `mapeditor-cli compare <project.7dmap> <world folder>` after saving a project from an opened world: it should report identical. `mapeditor-cli validate <world>` lists the same issues as the Issues panel.
 - In game (v3.3 at `C:\7D2D\Custom\v3.3`): start a new game on each exported test world (a 4096 new world and an edited 8192 RWG world). Check that terrain, biomes, roads, water, POIs and spawns match the editor, and look for errors in the log.
 - Performance targets: an 8k world opens in under 5 s, and brush strokes run at 60 fps at a typical zoom.
 
@@ -76,3 +88,6 @@ Each milestone ends with a world that loads in game.
 - Confirm that a copied `main.ttw` loads cleanly, and whether `biomes.png` must be exactly W/8.
 - See how the load-time `CopyWorldPrefabHeightsIntoHeightMap` treats terrain under prefabs. This tunes how much flattening PrefabPlacer does.
 - Read the game EULA for third-party tools before release.
+
+## Decided
+- **Town placement (2026-10-17):** a town's 150 m cells now start at the corner the drag starts from, not at the world's grid, so a town drawn against a road sits against it. The drag snaps to whole cells, shows them while dragging, and turns red with a note when it holds none. Street tiles placed by hand follow the grid of the nearest street tile (`PrefabPlacer.TileGridOffset`). RWG keeps a world-wide grid, but a loaded world only lists each prefab's position, so the game doesn't need it.

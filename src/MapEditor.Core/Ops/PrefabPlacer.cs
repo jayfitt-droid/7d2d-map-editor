@@ -98,6 +98,27 @@ public static class PrefabPlacer
     }
 
     /// <summary>
+    /// Where the 150 m street tile grid starts (0 to 149 m east and north) near grid point (gx, gz): that of the
+    /// nearest street tile within two tiles, else the world's own grid (0, 0).
+    /// </summary>
+    private static (int X, int Z) TileGridOffset(World world, PrefabLibrary library, float gx, float gz,
+        IReadOnlyCollection<PrefabInstance>? ignore)
+    {
+        (int, int) best = (0, 0);
+        float bestD = 2f * StreetTileSize * 2 * StreetTileSize;
+        foreach (var p in world.Prefabs)
+        {
+            if (ignore?.Contains(p) == true || library.Find(p.Name) is not { IsStreetTile: true }) continue;
+            int x = world.WorldToGrid(p.Position.X), z = world.WorldToGrid(p.Position.Z);
+            float dx = x + StreetTileSize / 2f - gx, dz = z + StreetTileSize / 2f - gz;
+            if (dx * dx + dz * dz >= bestD) continue;
+            bestD = dx * dx + dz * dz;
+            best = (((x % StreetTileSize) + StreetTileSize) % StreetTileSize, ((z % StreetTileSize) + StreetTileSize) % StreetTileSize);
+        }
+        return best;
+    }
+
+    /// <summary>
     /// The spot for <paramref name="info"/> centred on grid point (<paramref name="gx"/>, <paramref name="gz"/>).
     /// Street tiles snap to the 150 m grid and take the height of a neighbouring tile; POIs snap into a
     /// street-tile lot under the cursor when they fit (<paramref name="lot"/>), else sit on the median ground.
@@ -109,8 +130,11 @@ public static class PrefabPlacer
         rotation &= 3;
         if (info.IsStreetTile)
         {
-            int tx = (int)MathF.Floor(gx / StreetTileSize) * StreetTileSize;
-            int tz = (int)MathF.Floor(gz / StreetTileSize) * StreetTileSize;
+            // Towns start their 150 m grid at the corner they were drawn from, so follow the grid of the
+            // nearest street tile; with none close by, use the world's grid as RWG does.
+            var (ox, oz) = TileGridOffset(world, library, gx, gz, ignore);
+            int tx = (int)MathF.Floor((gx - ox) / StreetTileSize) * StreetTileSize + ox;
+            int tz = (int)MathF.Floor((gz - oz) / StreetTileSize) * StreetTileSize + oz;
             int x = world.GridToWorld(tx), z = world.GridToWorld(tz);
             int ground = NeighbourTileGround(world, library, info, x, z, rotation, ignore)
                          ?? MedianGround(world, Footprint(world, info, x, z, rotation));
@@ -168,24 +192,36 @@ public static class PrefabPlacer
                 int lx = tile.Position.X + m.Start.X, lz = tile.Position.Z + m.Start.Z;
                 if (wx < lx || wz < lz || wx >= lx + m.Size.X || wz >= lz + m.Size.Z) continue;
 
-                int rotation = (tile.Rotation + poi.RotationToFaceNorth + m.Rotations) & 3;
-                var (sx, sz) = poi.Footprint(rotation);
-                int x = lx, z = lz;
-                switch (m.Rotations & 3)
-                {
-                    case 0: x += m.Size.X / 2 - sx / 2; z += m.Size.Z - sz; break;
-                    case 1: z += m.Size.Z / 2 - sz / 2; break;
-                    case 2: x += m.Size.X / 2 - sx / 2; break;
-                    case 3: z += m.Size.Z / 2 - sz / 2; x += m.Size.X - sx; break;
-                }
+                var spot = LotSpot(new PrefabSpot(tile.Position.X, tile.Position.Y, tile.Position.Z, tile.Rotation), m, poi);
+                var (sx, sz) = poi.Footprint(spot.Rotation);
                 bool fits = sx <= m.Size.X && sz <= m.Size.Z;
-                var snap = new LotSnap(tile, m, lx, lz, fits, new PrefabSpot(x, tile.Position.Y + m.Start.Y + poi.YOffset, z, rotation));
+                var snap = new LotSnap(tile, m, lx, lz, fits, spot);
                 long area = (long)m.Size.X * m.Size.Z, bestArea = best is null ? 0 : (long)best.Lot.Size.X * best.Lot.Size.Z;
                 if (best is null || fits && (!best.Fits || area < bestArea) || !fits && !best.Fits && area > bestArea) best = snap;
             }
             if (best is not null) return best;
         }
         return null;
+    }
+
+    /// <summary>
+    /// Where RWG puts <paramref name="poi"/> in lot <paramref name="lot"/> (already turned with its parent) of a
+    /// parent prefab at <paramref name="parent"/>: turned to face the lot's street, pushed against that side, and
+    /// on the parent's level.
+    /// </summary>
+    public static PrefabSpot LotSpot(PrefabSpot parent, PrefabMarker lot, PrefabInfo poi)
+    {
+        int rotation = (parent.Rotation + poi.RotationToFaceNorth + lot.Rotations) & 3;
+        var (sx, sz) = poi.Footprint(rotation);
+        int x = parent.X + lot.Start.X, z = parent.Z + lot.Start.Z;
+        switch (lot.Rotations & 3)
+        {
+            case 0: x += lot.Size.X / 2 - sx / 2; z += lot.Size.Z - sz; break;
+            case 1: z += lot.Size.Z / 2 - sz / 2; break;
+            case 2: x += lot.Size.X / 2 - sx / 2; break;
+            case 3: z += lot.Size.Z / 2 - sz / 2; x += lot.Size.X - sx; break;
+        }
+        return new PrefabSpot(x, parent.Y + lot.Start.Y + poi.YOffset, z, rotation);
     }
 
     /// <summary>Things to warn about for a prefab at <paramref name="spot"/>, each a short phrase.</summary>
@@ -364,14 +400,15 @@ public static class PrefabPlacer
     /// The parts RWG adds from a prefab's part markers (street furniture on tiles, cars and props on POIs): one
     /// part per marker group, picked by the markers' spawn chances, skipping parts tagged for other districts
     /// or overlapping one already chosen. <paramref name="district"/> is the town district the prefab is in.
+    /// <paramref name="taken"/> carries the part footprints of a whole street tile across calls, as RWG keeps them.
     /// </summary>
     public static List<PrefabInstance> MarkerParts(PrefabLibrary library, PrefabInfo prefab, PrefabSpot spot, int seed,
-        string? district = null)
+        string? district = null, List<(int X0, int Z0, int X1, int Z1)>? taken = null)
     {
         district ??= prefab.District;
         var rand = new Random(seed);
         var result = new List<PrefabInstance>();
-        var taken = new List<(int X0, int Z0, int X1, int Z1)>();
+        taken ??= [];
         var markers = prefab.RotatedMarkers(spot.Rotation).Where(m => m.Type == MarkerType.PartSpawn && m.Part is not null).ToList();
         foreach (var group in markers.GroupBy(m => m.Group))
         {

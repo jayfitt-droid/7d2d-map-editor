@@ -5,9 +5,13 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>MapEditor</AssemblyName>
     <RootNamespace>MapEditor.App</RootNamespace>
+    <!-- Program.Main runs Velopack's hooks before WPF starts. -->
+    <StartupObject>MapEditor.App.Program</StartupObject>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MapEditor.Core\MapEditor.Core.csproj" />

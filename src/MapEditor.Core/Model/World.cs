@@ -100,6 +100,30 @@ public sealed class World
 
     public List<string> Warnings { get; } = [];
 
+    /// <summary>
+    /// A deep copy, for writing a snapshot on another thread while editing carries on (autosave).
+    /// Passthrough images and extra files are immutable once loaded, so they are shared.
+    /// </summary>
+    public World Clone()
+    {
+        var copy = new World
+        {
+            Name = Name,
+            Size = Size,
+            Height = Height.Clone(),
+            Biomes = Biomes is { } b ? new IndexedLayer(b.Indices.Clone(), [.. b.Palette]) : null,
+            Roads = Roads?.Clone(),
+            Water = Water?.Clone(),
+            Radiation = Radiation?.Clone(),
+            MapInfo = new XDocument(MapInfo),
+        };
+        copy.Prefabs.AddRange(Prefabs.Select(p => p.Clone()));
+        copy.Spawns.AddRange(Spawns.Select(s => s.Clone()));
+        foreach (var (k, v) in PassthroughImages) copy.PassthroughImages[k] = v;
+        foreach (var (k, v) in ExtraFiles) copy.ExtraFiles[k] = v;
+        return copy;
+    }
+
     public static float HeightToMetres(ushort raw) => raw / 257f;
 
     public static ushort MetresToHeight(float metres) => (ushort)Math.Clamp((int)(metres * 257f), 0, ushort.MaxValue);

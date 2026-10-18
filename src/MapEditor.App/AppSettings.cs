@@ -12,6 +12,29 @@ public sealed class AppSettings
 
     public string? GameFolder { get; set; }
     public string? LastWorldFolder { get; set; }
+    public bool Autosave { get; set; } = true;
+
+    /// <summary>Projects (.7dmap) and world folders opened or saved lately, newest first.</summary>
+    public List<string> RecentFiles { get; set; } = [];
+
+    public const int MaxRecentFiles = 10;
+
+    /// <summary>Puts a project or world folder at the top of <see cref="RecentFiles"/>.</summary>
+    public void AddRecent(string path)
+    {
+        path = Path.GetFullPath(path);
+        RecentFiles.RemoveAll(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+        RecentFiles.Insert(0, path);
+        if (RecentFiles.Count > MaxRecentFiles) RecentFiles.RemoveRange(MaxRecentFiles, RecentFiles.Count - MaxRecentFiles);
+    }
+
+    /// <summary>Overrides the release feed for update checks (see Updates).</summary>
+    public string? UpdateUrl { get; set; }
+
+    /// <summary>The main window's last size (DIPs) and whether it was maximized.</summary>
+    public double WindowWidth { get; set; }
+    public double WindowHeight { get; set; }
+    public bool WindowMaximized { get; set; }
 
     public static AppSettings Load()
     {
@@ -29,6 +52,9 @@ public sealed class AppSettings
 
         if (settings.GameFolder is null || !GameInstall.IsValid(settings.GameFolder))
             settings.GameFolder = GameInstall.FindCandidates().FirstOrDefault();
+        // Settings from before the recent list still know the last world.
+        if (settings.RecentFiles.Count == 0 && settings.LastWorldFolder is { } last && (File.Exists(last) || Directory.Exists(last)))
+            settings.AddRecent(last);
         return settings;
     }
 
