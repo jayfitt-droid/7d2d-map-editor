@@ -23,6 +23,10 @@ public partial class ShortcutsWindow : Window
                 new(["Ctrl+click"], "Sample height or water level"),
                 new(["Shift+drag"], "Erase (roads, radiation)"),
             ]),
+            new("Snapping",
+            [
+                new(["Alt+click"], "Place a road point, POI or trader without snapping"),
+            ]),
             new("Prefabs",
             [
                 new(["Del"], "Delete the selection"),

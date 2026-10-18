@@ -85,11 +85,11 @@ public partial class ExportDialog : Window
     {
         if (CurrentFolder() is not { } folder) return;
         if (_hasErrors &&
-            MessageBox.Show(this, "The world has errors, so the game may not load it properly. Export it anyway?", "Export World",
+            ThemedMessageBox.Show(this, "The world has errors, so the game may not load it properly. Export it anyway?", "Export World",
                 MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
             return;
         if (File.Exists(Path.Combine(folder, WorldFiles.Height)) &&
-            MessageBox.Show(this, $"Replace the world in '{Path.GetFileName(folder)}'?", "Export World",
+            ThemedMessageBox.Show(this, $"Replace the world in '{Path.GetFileName(folder)}'?", "Export World",
                 MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
             return;
         Folder = folder;

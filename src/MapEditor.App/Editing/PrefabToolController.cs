@@ -26,6 +26,7 @@ public sealed class PrefabToolController
     private PrefabInstance? _dragging;
     private Vector _grab;
     private PrefabSpot? _dropSpot;
+    private List<PrefabInstance> _dropCovered = []; // POIs the dragged one covers and replaces on drop
     private bool _dropInLot;
 
     // Spawn drag, moved live inside one undo step.
@@ -41,6 +42,12 @@ public sealed class PrefabToolController
         {
             _hover = m is { } p && World is { } w ? new Point(p.X, w.Size - p.Y) : null;
             if (_dragging is null) UpdateGhost();
+            // A hand over what the Select tool can pick up.
+            if (_vm.IsSelectTool && !IsDragging && !_map.IsPanning)
+            {
+                var cursor = m is { } at && CanGrab(at) ? Cursors.Hand : null;
+                if (_map.Cursor != cursor) _map.Cursor = cursor;
+            }
         };
     }
 
@@ -53,15 +60,16 @@ public sealed class PrefabToolController
 
     public bool IsDragging => _dragging is not null || _spawnSession is not null;
 
-    private bool Armed => _vm.SelectedPrefabInfo is not null;
+    private bool Armed => _vm.PlacingPrefab is not null;
 
     private void OnToolInput(object? sender, ToolInputEventArgs e)
     {
         if (World is not { } world) return;
         if (_vm.IsBusy && e.Phase == ToolPhase.Down) return;
         var grid = new Point(e.MapPoint.X, world.Size - e.MapPoint.Y);
-        if (_vm.SelectedTool == EditorTool.Prefab) PrefabInput(world, e, grid);
+        if (_vm.IsPrefabTool) PrefabInput(world, e, grid);
         else if (_vm.SelectedTool == EditorTool.Spawn) SpawnInput(world, e, grid);
+        else if (_vm.IsSelectTool) SelectInput(world, e, grid);
     }
 
     // ---- prefabs -----------------------------------------------------------
@@ -75,19 +83,74 @@ public sealed class PrefabToolController
                     Delete(world, hit);
                 break;
             case ToolPhase.Down when Armed:
-                Place(world, _vm.SelectedPrefabInfo!);
+                Place(world, _vm.PlacingPrefab!);
                 break;
             case ToolPhase.Down:
-                var under = WorldQuery.PrefabAt(world, world.GridToWorld((int)grid.X), world.GridToWorld((int)grid.Y), Library);
-                Select(under);
-                if (under is not null && Library.Find(under.Name) is { } info)
-                {
-                    var (sx, sz) = info.Footprint(under.Rotation);
-                    var centre = new Point(world.WorldToGrid(under.Position.X) + sx / 2.0, world.WorldToGrid(under.Position.Z) + sz / 2.0);
-                    _dragging = under;
-                    _grab = grid - centre;
-                    _dropSpot = null;
-                }
+                SelectAndGrab(world, WorldQuery.PrefabAt(world, world.GridToWorld((int)grid.X), world.GridToWorld((int)grid.Y), Library), grid);
+                break;
+            case ToolPhase.Move when _dragging is not null:
+                DragTo(world, grid);
+                break;
+            case ToolPhase.Up when _dragging is not null:
+                EndDrag(world);
+                break;
+        }
+    }
+
+    /// <summary>Selects a prefab and, if it is in the game folder, picks it up to be dragged.</summary>
+    private void SelectAndGrab(World world, PrefabInstance? under, Point grid)
+    {
+        Select(under);
+        if (under is null || Library.Find(under.Name) is not { } info) return;
+        var (sx, sz) = info.Footprint(under.Rotation);
+        var centre = new Point(world.WorldToGrid(under.Position.X) + sx / 2.0, world.WorldToGrid(under.Position.Z) + sz / 2.0);
+        _dragging = under;
+        _grab = grid - centre;
+        _dropSpot = null;
+    }
+
+    // ---- the Select tool ---------------------------------------------------
+
+    public bool HasSpawnSelected => _selectedSpawn is not null;
+
+    /// <summary>What the Select tool picks at a point: POIs, traders and street tiles (the smallest under it), not parts.</summary>
+    private PrefabInstance? PickAt(World world, Point grid) =>
+        WorldQuery.PrefabAt(world, world.GridToWorld((int)grid.X), world.GridToWorld((int)grid.Y), Library,
+            info => info is not { IsPart: true });
+
+    private SpawnPoint? SpawnNear(World world, Point grid) =>
+        SpawnHelper.Near(world, (float)grid.X, (float)grid.Y, (float)Math.Max(4, 8 / _map.Scale));
+
+    /// <summary>Whether the Select tool would pick something up at a map point (else a drag there pans).</summary>
+    public bool CanGrab(Point mapPoint)
+    {
+        if (World is not { } world) return false;
+        var grid = new Point(mapPoint.X, world.Size - mapPoint.Y);
+        return SpawnNear(world, grid) is not null || PickAt(world, grid) is not null;
+    }
+
+    /// <summary>The Select tool: a press on a spawn point or prefab selects it, and dragging moves it.</summary>
+    private void SelectInput(World world, ToolInputEventArgs e, Point grid)
+    {
+        switch (e.Phase)
+        {
+            case ToolPhase.Down when SpawnNear(world, grid) is { } spawn:
+                Select(null);
+                SelectSpawn(spawn);
+                _spawnSession = new EditSession("Move spawn");
+                break;
+            case ToolPhase.Down:
+                SelectSpawn(null);
+                SelectAndGrab(world, PickAt(world, grid), grid);
+                break;
+            case ToolPhase.Move when _spawnSession is not null && _selectedSpawn is { } moving:
+                if (!world.Height.Contains((int)grid.X, (int)grid.Y)) return;
+                SpawnHelper.Move(world, moving, (int)grid.X, (int)grid.Y, _spawnSession);
+                SelectSpawn(moving);
+                break;
+            case ToolPhase.Up when _spawnSession is not null:
+                Commit(_spawnSession);
+                _spawnSession = null;
                 break;
             case ToolPhase.Move when _dragging is not null:
                 DragTo(world, grid);
@@ -102,9 +165,12 @@ public sealed class PrefabToolController
     {
         if (_hover is not { } at) return;
         var spot = PrefabPlacer.SpotAt(world, Library, info, (float)at.X, (float)at.Y, _vm.PrefabRotation, out var lot);
+        spot = Snapped(world, info, spot, lot, null);
         bool inLot = lot is { Fits: true };
-        var problems = PrefabPlacer.Check(world, Library, info, spot, snappedToLot: inLot);
+        var covered = PrefabPlacer.Covered(world, Library, info, spot);
+        var problems = PrefabPlacer.Check(world, Library, info, spot, covered, snappedToLot: inLot);
         var session = new EditSession("Place " + info.Name);
+        foreach (var old in covered) PrefabPlacer.Delete(world, Library, old, session);
         var placed = PrefabPlacer.Place(world, info, spot, _vm.PrefabFlatten, session, inLot);
         int parts = AddParts(world, info, spot, inLot ? lot!.Tile : null);
         Commit(session);
@@ -112,6 +178,7 @@ public sealed class PrefabToolController
         _vm.Status = $"Placed {info.Name} at {Where(spot)}"
             + (inLot ? $", in a {lot!.Lot.Size.X}×{lot.Lot.Size.Z} m lot" : "")
             + (parts > 0 ? $", with {parts} parts" : "")
+            + Replacing(covered)
             + (problems.Count > 0 ? ". Warning: " + string.Join(", ", problems) : ".");
         UpdateGhost();
     }
@@ -172,11 +239,13 @@ public sealed class PrefabToolController
         var ignore = PrefabPlacer.Contents(world, Library, p);
         ignore.Add(p);
         var spot = PrefabPlacer.SpotAt(world, Library, info, (float)centre.X, (float)centre.Y, p.Rotation, out var lot, ignore);
+        spot = Snapped(world, info, spot, lot, ignore);
         _dropInLot = lot is { Fits: true };
         _dropSpot = spot;
-        var problems = PrefabPlacer.Check(world, Library, info, spot, ignore, _dropInLot);
-        _map.PrefabGhost = Ghost(info, spot, problems.Count > 0, lot);
-        _vm.PlacementText = Describe(info, spot, problems, lot);
+        _dropCovered = PrefabPlacer.Covered(world, Library, info, spot, ignore);
+        var problems = PrefabPlacer.Check(world, Library, info, spot, [.. ignore, .. _dropCovered], _dropInLot);
+        _map.PrefabGhost = Ghost(info, spot, problems.Count > 0, lot, _dropCovered);
+        _vm.PlacementText = Describe(info, spot, problems, lot) + Replacing(_dropCovered, "\n");
     }
 
     private void EndDrag(World world)
@@ -189,17 +258,36 @@ public sealed class PrefabToolController
             Select(p);
             return;
         }
-        MoveTo(world, p, spot, _dropInLot, "Move " + p.Name);
+        MoveTo(world, p, spot, _dropInLot, "Move " + p.Name, _dropCovered);
+        _dropCovered = [];
     }
 
-    private void MoveTo(World world, PrefabInstance p, PrefabSpot spot, bool inLot, string label)
+    private void MoveTo(World world, PrefabInstance p, PrefabSpot spot, bool inLot, string label, List<PrefabInstance>? covered = null)
     {
         var session = new EditSession(label);
+        foreach (var old in covered ?? []) PrefabPlacer.Delete(world, Library, old, session);
         PrefabPlacer.Move(world, Library, p, spot, _vm.PrefabFlatten, session, inLot);
         Commit(session);
         Select(p);
-        _vm.Status = $"Moved {p.Name} to {Where(spot)}.";
+        _vm.Status = $"Moved {p.Name} to {Where(spot)}{Replacing(covered ?? [])}.";
     }
+
+    /// <summary>How near (in screen pixels) a POI's edge must come to a street tile's edge to snap to it.</summary>
+    private const double EdgeSnapPixels = 10;
+
+    /// <summary>
+    /// A POI's spot with its edges snapped to street tiles nearby, unless it sits in a street-tile lot (which places it) or
+    /// Alt is held.
+    /// </summary>
+    private PrefabSpot Snapped(World world, PrefabInfo info, PrefabSpot spot, LotSnap? lot, IReadOnlyCollection<PrefabInstance>? ignore)
+    {
+        if (lot is { Fits: true } || Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)) return spot;
+        int snap = (int)Math.Clamp(Math.Round(EdgeSnapPixels / _map.Scale), 1, 20);
+        return PrefabPlacer.SnapToTiles(world, Library, info, spot, snap, ignore);
+    }
+
+    private static string Replacing(List<PrefabInstance> covered, string lead = ", ") =>
+        covered.Count == 0 ? "" : lead + "replacing " + string.Join(", ", covered.Select(p => p.Name));
 
     private void Delete(World world, PrefabInstance p)
     {
@@ -243,7 +331,7 @@ public sealed class PrefabToolController
     public void DeleteSelected()
     {
         if (World is not { } world) return;
-        if (_vm.SelectedTool == EditorTool.Spawn && _selectedSpawn is { } spawn)
+        if ((_vm.SelectedTool == EditorTool.Spawn || _vm.IsSelectTool) && _selectedSpawn is { } spawn)
         {
             var session = new EditSession("Delete spawn");
             SpawnHelper.Delete(world, spawn, session);
@@ -251,7 +339,7 @@ public sealed class PrefabToolController
             SelectSpawn(null);
             _vm.Status = "Deleted the spawn point.";
         }
-        else if (_vm.SelectedTool == EditorTool.Prefab && _selected is { } p)
+        else if ((_vm.IsPrefabTool || _vm.IsSelectTool) && _selected is { } p)
         {
             Delete(world, p);
         }
@@ -369,25 +457,34 @@ public sealed class PrefabToolController
     /// <summary>Redraws the placement ghost under the mouse while a prefab is picked in the browser.</summary>
     public void UpdateGhost()
     {
-        if (World is not { } world || _vm.SelectedTool != EditorTool.Prefab || _vm.SelectedPrefabInfo is not { } info || _hover is not { } at)
+        if (World is not { } world || !_vm.IsPrefabTool || _vm.PlacingPrefab is not { } info || _hover is not { } at)
         {
             _map.PrefabGhost = null;
             if (_vm.SelectedTool == EditorTool.Prefab && !Armed)
                 _vm.PlacementText = "Pick a prefab below to place it, or click one on the map to select it.";
+            else if (_vm.IsTraderTool && !Armed)
+                _vm.PlacementText = "No trader prefabs found. Set the game folder under Settings.";
             return;
         }
         var spot = PrefabPlacer.SpotAt(world, Library, info, (float)at.X, (float)at.Y, _vm.PrefabRotation, out var lot);
-        var problems = PrefabPlacer.Check(world, Library, info, spot, snappedToLot: lot is { Fits: true });
-        _map.PrefabGhost = Ghost(info, spot, problems.Count > 0, lot);
-        _vm.PlacementText = Describe(info, spot, problems, lot);
+        spot = Snapped(world, info, spot, lot, null);
+        var covered = PrefabPlacer.Covered(world, Library, info, spot);
+        var problems = PrefabPlacer.Check(world, Library, info, spot, covered, snappedToLot: lot is { Fits: true });
+        _map.PrefabGhost = Ghost(info, spot, problems.Count > 0, lot, covered);
+        _vm.PlacementText = Describe(info, spot, problems, lot) + Replacing(covered, "\n");
     }
 
-    private PrefabGhost Ghost(PrefabInfo info, PrefabSpot spot, bool warning, LotSnap? lot)
+    private PrefabGhost Ghost(PrefabInfo info, PrefabSpot spot, bool warning, LotSnap? lot, List<PrefabInstance> covered)
     {
         var (sx, sz) = info.Footprint(spot.Rotation);
         Rect? lotRect = lot is null ? null : _map.FootprintMapRect(lot.LotX, lot.LotZ, lot.Lot.Size.X, lot.Lot.Size.Z);
+        var replaces = covered.Select(p =>
+        {
+            var (px, pz) = Library.Find(p.Name)!.Footprint(p.Rotation);
+            return _map.FootprintMapRect(p.Position.X, p.Position.Z, px, pz);
+        }).ToList();
         return new PrefabGhost(_map.FootprintMapRect(spot.X, spot.Z, sx, sz), info.FrontDirection(spot.Rotation), warning,
-            lotRect, lot?.Fits ?? true, info, spot.Rotation);
+            lotRect, lot?.Fits ?? true, info, spot.Rotation) { Replaces = replaces };
     }
 
     private static readonly string[] Facing = ["north", "west", "south", "east"];
@@ -418,8 +515,11 @@ public sealed class PrefabToolController
         _map.SelectedSpawn = null;
         _vm.SelectionText = "";
         _vm.HasPrefabSelection = false;
-        if (_vm.SelectedTool == EditorTool.Prefab) Select(_selected);
+        if (_vm.IsPrefabTool) Select(_selected);
         else if (_vm.SelectedTool == EditorTool.Spawn) SelectSpawn(_selectedSpawn);
+        else if (_vm.IsSelectTool && _selectedSpawn is not null) SelectSpawn(_selectedSpawn);
+        else if (_vm.IsSelectTool) Select(_selected);
+        if (!_vm.IsSelectTool && !_map.IsPanning && _map.Cursor == Cursors.Hand) _map.Cursor = null;
         UpdateGhost();
         _map.InvalidateVisual();
     }

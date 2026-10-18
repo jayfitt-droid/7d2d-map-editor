@@ -47,13 +47,15 @@ public static class WorldQuery
     }
 
     /// <summary>The prefab whose footprint covers world point (wx, wz), preferring the smallest.</summary>
-    public static PrefabInstance? PrefabAt(World world, int wx, int wz, PrefabLibrary prefabs)
+    public static PrefabInstance? PrefabAt(World world, int wx, int wz, PrefabLibrary prefabs, Func<PrefabInfo?, bool>? accept = null)
     {
         PrefabInstance? best = null;
         long bestArea = long.MaxValue;
         foreach (var p in world.Prefabs)
         {
-            var (sx, sz) = prefabs.Find(p.Name)?.Footprint(p.Rotation) ?? (1, 1);
+            var info = prefabs.Find(p.Name);
+            if (accept is not null && !accept(info)) continue;
+            var (sx, sz) = info?.Footprint(p.Rotation) ?? (1, 1);
             if (wx < p.Position.X || wz < p.Position.Z || wx >= p.Position.X + sx || wz >= p.Position.Z + sz) continue;
             long area = (long)sx * sz;
             if (area < bestArea) { best = p; bestArea = area; }

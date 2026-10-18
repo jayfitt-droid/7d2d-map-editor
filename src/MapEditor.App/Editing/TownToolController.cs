@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using System.Numerics;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using MapEditor.App.Map;
 using MapEditor.Core.Edit;
@@ -13,7 +15,8 @@ namespace MapEditor.App.Editing;
 /// The Town tool: drag a rectangle, and a town is planned in the 150 m cells inside it the way RWG would plan
 /// one. The rectangle snaps to whole cells counted from the corner the drag starts at, so the town's edge is
 /// where it was drawn. The plan is only a preview until it is built (Enter), as one undo step; changing the
-/// township, seed or options plans again.
+/// township, seed or options plans again. Before it is built, the box's edges and corners can be dragged to resize it
+/// (in whole cells), and clicking a link road turns it off or back on.
 /// </summary>
 public sealed class TownToolController
 {
@@ -29,12 +32,26 @@ public sealed class TownToolController
     private TownPlan? _plan;
     private bool _choosingDefault;
 
+    [Flags]
+    private enum Edges { None = 0, West = 1, East = 2, South = 4, North = 8 }
+
+    private Edges _resize; // the edges being dragged, while resizing the box
+    private GridRect _resizeFrom;
+
+    // Link roads the user turned off, by the exit they start from, so a replan (new seed, options) keeps them off.
+    private readonly HashSet<(int X, int Z)> _offExits = [];
+    private readonly List<RoadPath> _offRoads = [];
+
+    /// <summary>How near (in screen pixels) the mouse must be to the box's edge, or to a link road, to grab it.</summary>
+    private const double GrabPixels = 8;
+
     public TownToolController(MapView map, MainViewModel vm, UndoStack undo)
     {
         _map = map;
         _vm = vm;
         _undo = undo;
         _map.ToolInput += OnToolInput;
+        _map.CursorMoved += OnCursorMoved;
         _vm.PropertyChanged += OnOptionChanged;
     }
 
@@ -43,7 +60,7 @@ public sealed class TownToolController
     /// <summary>Raised after a town has been built and committed to the undo history.</summary>
     public event EventHandler<GridRect>? Edited;
 
-    public bool IsDragging => _dragStart is not null;
+    public bool IsDragging => _dragStart is not null || _resize != Edges.None;
 
     private void OnOptionChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -72,7 +89,28 @@ public sealed class TownToolController
         var grid = new Point(Math.Clamp(e.MapPoint.X, 0, world.Size), Math.Clamp(world.Size - e.MapPoint.Y, 0, world.Size));
         switch (e.Phase)
         {
+            case ToolPhase.Down when _selection is { } current && EdgesAt(current, grid) is var edges and not Edges.None:
+                _resize = edges;
+                _resizeFrom = current;
+                _plan = null;
+                _offRoads.Clear();
+                ShowPreview();
+                break;
+            case ToolPhase.Down when _plan is not null && RoadAt(grid) is { } road:
+                ToggleRoad(road);
+                break;
+            case ToolPhase.Move when _resize != Edges.None:
+                _selection = Resized(_resizeFrom, _resize, grid, world.Size);
+                ShowPreview();
+                break;
+            case ToolPhase.Up when _resize != Edges.None:
+                _selection = Resized(_resizeFrom, _resize, grid, world.Size);
+                _resize = Edges.None;
+                ChooseDefaultTownship(world, _selection.Value, TownGenerator.CellsIn(world, _selection.Value).Count);
+                Replan();
+                break;
             case ToolPhase.Down:
+                _offExits.Clear();
                 _dragStart = grid;
                 _plan = null;
                 _drag = Rect(grid, grid);
@@ -121,6 +159,99 @@ public sealed class TownToolController
         return new GridRect(x0, z0, x0 + nx * Cell, z0 + nz * Cell);
     }
 
+    /// <summary>Which edges of the box the point is on (two at a corner), within <see cref="GrabPixels"/>.</summary>
+    private Edges EdgesAt(GridRect box, Point grid)
+    {
+        double t = GrabPixels / _map.Scale;
+        bool alongX = grid.X >= box.X0 - t && grid.X <= box.X1 + t, alongZ = grid.Y >= box.Z0 - t && grid.Y <= box.Z1 + t;
+        var edges = Edges.None;
+        if (alongZ && Math.Abs(grid.X - box.X0) <= t) edges |= Edges.West;
+        else if (alongZ && Math.Abs(grid.X - box.X1) <= t) edges |= Edges.East;
+        if (alongX && Math.Abs(grid.Y - box.Z0) <= t) edges |= Edges.South;
+        else if (alongX && Math.Abs(grid.Y - box.Z1) <= t) edges |= Edges.North;
+        return edges;
+    }
+
+    /// <summary>
+    /// The box with the dragged edges moved to the whole cell nearest the mouse, at least one cell from the edge
+    /// opposite and inside the world. The other edges stay where they are.
+    /// </summary>
+    private static GridRect Resized(GridRect from, Edges edges, Point grid, int worldSize)
+    {
+        int x0 = from.X0, x1 = from.X1, z0 = from.Z0, z1 = from.Z1;
+        static int Cells(double distance, int room) => Math.Clamp((int)Math.Round(distance / Cell), 1, Math.Max(1, room / Cell));
+        if (edges.HasFlag(Edges.West)) x0 = x1 - Cells(x1 - grid.X, x1) * Cell;
+        if (edges.HasFlag(Edges.East)) x1 = x0 + Cells(grid.X - x0, worldSize - x0) * Cell;
+        if (edges.HasFlag(Edges.South)) z0 = z1 - Cells(z1 - grid.Y, z1) * Cell;
+        if (edges.HasFlag(Edges.North)) z1 = z0 + Cells(grid.Y - z0, worldSize - z0) * Cell;
+        return new GridRect(x0, z0, x1, z1);
+    }
+
+    private static (int X, int Z) ExitOf(RoadPath road) => ((int)MathF.Round(road.Points[0].X), (int)MathF.Round(road.Points[0].Y));
+
+    /// <summary>The planned link road (on or off) under the point, if any.</summary>
+    private RoadPath? RoadAt(Point grid)
+    {
+        if (_plan is not { } plan) return null;
+        var p = new Vector2((float)grid.X, (float)grid.Y);
+        float grab = (float)(GrabPixels / _map.Scale);
+        return plan.Roads.Concat(_offRoads)
+            .Select(r => (Road: r, Distance: DistanceTo(r.Points, p) - r.Radius))
+            .Where(r => r.Distance <= grab)
+            .OrderBy(r => r.Distance)
+            .Select(r => r.Road)
+            .FirstOrDefault();
+    }
+
+    private static float DistanceTo(IReadOnlyList<Vector2> line, Vector2 p)
+    {
+        float best = float.MaxValue;
+        for (int i = 1; i < line.Count; i++)
+        {
+            var ab = line[i] - line[i - 1];
+            float t = Math.Clamp(Vector2.Dot(p - line[i - 1], ab) / Math.Max(ab.LengthSquared(), 1e-6f), 0, 1);
+            best = Math.Min(best, Vector2.Distance(p, line[i - 1] + ab * t));
+        }
+        return best;
+    }
+
+    /// <summary>Turns a link road off (its exit is left unjoined) or back on.</summary>
+    private void ToggleRoad(RoadPath road)
+    {
+        if (_plan is not { } plan) return;
+        if (plan.Roads.Remove(road))
+        {
+            _offRoads.Add(road);
+            _offExits.Add(ExitOf(road));
+        }
+        else if (_offRoads.Remove(road))
+        {
+            plan.Roads.Add(road);
+            _offExits.Remove(ExitOf(road));
+        }
+        ShowPreview();
+    }
+
+    /// <summary>Resize arrows over the box's edges and a hand over link roads, so it's clear they can be grabbed.</summary>
+    private void OnCursorMoved(object? sender, Point? map)
+    {
+        if (World is not { } world || _vm.SelectedTool != EditorTool.Town || IsDragging || _map.IsPanning) return;
+        Cursor? cursor = null;
+        if (map is { } m && _selection is { } box)
+        {
+            var grid = new Point(m.X, world.Size - m.Y);
+            cursor = EdgesAt(box, grid) switch
+            {
+                Edges.West or Edges.East => Cursors.SizeWE,
+                Edges.North or Edges.South => Cursors.SizeNS,
+                Edges.West | Edges.North or Edges.East | Edges.South => Cursors.SizeNWSE,
+                Edges.West | Edges.South or Edges.East | Edges.North => Cursors.SizeNESW,
+                _ => RoadAt(grid) is not null ? Cursors.Hand : null,
+            };
+        }
+        if (_map.Cursor != cursor) _map.Cursor = cursor;
+    }
+
     /// <summary>
     /// Offers the township RWG would put here: allowed in the biome at the centre, sized for the selection. Once the
     /// user has picked a township themselves, their pick is kept.
@@ -147,6 +278,7 @@ public sealed class TownToolController
     private void Replan()
     {
         _plan = null;
+        _offRoads.Clear();
         if (World is not { } world || _selection is not { } selection) { ShowPreview(); return; }
         if (_vm.SelectedTownship is not { } township)
         {
@@ -165,6 +297,12 @@ public sealed class TownToolController
             Traders = _vm.TownTraders,
         };
         _plan = TownGenerator.Plan(world, _vm.Prefabs, _vm.Mixer, _vm.Biomes, selection, options);
+        _offRoads.Clear();
+        foreach (var road in _plan.Roads.Where(r => _offExits.Contains(ExitOf(r))).ToList())
+        {
+            _plan.Roads.Remove(road);
+            _offRoads.Add(road);
+        }
         ShowPreview();
     }
 
@@ -201,7 +339,12 @@ public sealed class TownToolController
     public void Refresh()
     {
         _dragStart = null;
-        if (World is null || _vm.SelectedTool != EditorTool.Town) Clear();
+        _resize = Edges.None;
+        if (World is null || _vm.SelectedTool != EditorTool.Town)
+        {
+            Clear();
+            if (!_map.IsPanning) _map.Cursor = null;
+        }
         else if (_selection is not null) Replan();
         else ShowPreview();
     }
@@ -209,9 +352,12 @@ public sealed class TownToolController
     private void Clear()
     {
         _dragStart = null;
+        _resize = Edges.None;
         _drag = null;
         _selection = null;
         _plan = null;
+        _offExits.Clear();
+        _offRoads.Clear();
         ShowPreview();
     }
 
@@ -267,11 +413,12 @@ public sealed class TownToolController
             .Where(p => _vm.Prefabs.Find(p.Name) is not { IsPart: true })
             .Select(p => MapRect(PrefabPlacer.Footprint(world, p, _vm.Prefabs))).ToList();
         var roads = plan.Roads.Select(r => (IReadOnlyList<Point>)r.Points.Select(v => new Point(v.X, world.Size - v.Y)).ToList()).ToList();
-        _map.TownPreview = new TownPreview(MapRect(selection), tiles, pois, traders, removed, roads);
-        _vm.TownText = Describe(plan);
+        var off = _offRoads.Select(r => (IReadOnlyList<Point>)r.Points.Select(v => new Point(v.X, world.Size - v.Y)).ToList()).ToList();
+        _map.TownPreview = new TownPreview(MapRect(selection), tiles, pois, traders, removed, roads) { OffRoads = off, Handles = true };
+        _vm.TownText = Describe(plan, _offRoads.Count);
     }
 
-    private static string Describe(TownPlan plan)
+    private static string Describe(TownPlan plan, int roadsOff)
     {
         if (plan.Tiles.Count == 0) return "Can't plan a town here: " + string.Join("; ", plan.Warnings) + ".";
         var districts = plan.Tiles.GroupBy(t => t.District!.Name).OrderByDescending(g => g.Count()).Select(g => $"{g.Key} {g.Count()}");
@@ -284,6 +431,9 @@ public sealed class TownToolController
                + $"Ground {plan.Ground} m"
                + (plan.Removed.Count > 0 ? $", replacing {plan.Removed.Count} prefabs (red)" : "")
                + (plan.Roads.Count > 0 ? $"\n{plan.Roads.Count} link road{(plan.Roads.Count == 1 ? "" : "s")} to the nearest road" : "")
+               + (roadsOff > 0 ? $"{(plan.Roads.Count > 0 ? ", " : "\n")}{roadsOff} turned off" : "")
+               + (plan.Roads.Count + roadsOff > 0 ? " (click a link road to turn it off or on)" : "")
+               + "\nDrag the box's edges or corners to resize it."
                + size
                + (plan.Warnings.Count > 0 ? "\nNote: " + string.Join("; ", plan.Warnings) : "");
     }

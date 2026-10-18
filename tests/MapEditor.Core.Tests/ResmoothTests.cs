@@ -67,4 +67,30 @@ public sealed class ResmoothTests(Xunit.Abstractions.ITestOutputHelper output)
         Assert.True(RoadOp.Resmooth(world, new GridRect(100, 100, 300, 300), [], new EditSession("Nothing")).IsEmpty);
         Assert.Equal(before, world.Height.Data);
     }
+
+    [Fact]
+    public void A_road_running_into_a_raised_poi_ramps_up_to_its_ground()
+    {
+        var world = new World { Name = "T", Size = 600, Height = new Grid<ushort>(600, 600) };
+        Array.Fill(world.Height.Data, World.MetresToHeight(40));
+        RoadOp.Draw(world, new RoadPath([new(100, 300), new(300, 300)], RoadType.Asphalt, 5f), new EditSession("Road"));
+        RoadOp.Draw(world, new RoadPath([new(100, 100), new(500, 100)], RoadType.Asphalt, 5f), new EditSession("Other road"));
+        var session = new EditSession("Place");
+        var poi = new GridRect(300, 280, 340, 320);
+        var area = PrefabPlacer.Flatten(world, poi, 44, 20, session);
+        RoadOp.Resmooth(world, area, [poi], session);
+        RoadOp.RampToFootprints(world, [poi], 44, session);
+
+        Assert.InRange(H(world, 298, 300), 43.7f, 44.1f);
+        Assert.InRange(H(world, 150, 300), 39.9f, 40.3f);
+        // Climbs steadily, with no step on the way.
+        var climb = Enumerable.Range(0, 50).Select(i => H(world, 150 + i * 3, 300)).ToList();
+        for (int i = 1; i < climb.Count; i++)
+        {
+            Assert.True(climb[i] >= climb[i - 1] - 0.02f, $"dips at x {150 + i * 3}");
+            Assert.True(climb[i] - climb[i - 1] < 0.35f, $"steps at x {150 + i * 3}");
+        }
+        // A road that doesn't reach the POI stays as it was.
+        Assert.InRange(H(world, 320, 100), 39.95f, 40.05f);
+    }
 }

@@ -21,6 +21,7 @@ public static class Icons
     public static Geometry Road { get; } = Make("M8,2 L3,22 M16,2 L21,22 M12,3 V6 M12,10 V13 M12,17 V21");
     public static Geometry Prefab { get; } = Make("M2,11 L12,3 L22,11 M5,9 V21 H19 V9 M10,21 V15 H14 V21");
     public static Geometry Town { get; } = Make("M2,21 H22 M4,21 V10 H10 V21 M10,21 V4 H19 V21 M6,13 H8 M6,17 H8 M13,8 H16 M13,12 H16 M13,16 H16");
+    public static Geometry Trader { get; } = Make("M3,3 H21 L22,9 H2 Z M2,9 C2,11.5 7,11.5 7,9 C7,11.5 12,11.5 12,9 C12,11.5 17,11.5 17,9 C17,11.5 22,11.5 22,9 M4,11 V21 H20 V11 M9,21 V15 H15 V21");
     public static Geometry Spawn { get; } = Make("M12,2 a3.5,3.5 0 1,0 0.01,0 Z M5,22 V18 C5,13 19,13 19,18 V22");
     public static Geometry Save { get; } = Make("M3,3 H17 L21,7 V21 H3 Z M7,3 V9 H16 V3 M7,21 V14 H17 V21");
     public static Geometry Undo { get; } = Make("M8,4 L3,9 L8,14 M3,9 H15 A6,6 0 0,1 15,21 H9");

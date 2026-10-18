@@ -53,6 +53,9 @@ public sealed partial class MainViewModel : ObservableObject
         {
             _prefabs = value;
             RefreshPrefabResults();
+            Traders = value.All.Where(p => p.IsTrader && !p.IsPart && !p.IsStreetTile)
+                .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            if (SelectedTrader is null || !Traders.Contains(SelectedTrader)) PickRandomTrader();
         }
     }
 
@@ -63,7 +66,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     public IReadOnlyList<ToolItem> NavigateTools { get; } =
     [
-        new(EditorTool.Pan, "Pan", "P", Icons.Pan, "Drag to move around, wheel to zoom. Hover a prefab to see its name."),
+        new(EditorTool.Select, "Select", "V", Icons.Cursor, "Click a POI, trader, street tile or spawn point to select it, drag it to move it. Q/E turn it, PgUp/PgDn raise or lower it, Del removes it. Drag empty ground to pan."),
     ];
 
     public IReadOnlyList<ToolItem> TerrainTools { get; } =
@@ -87,6 +90,7 @@ public sealed partial class MainViewModel : ObservableObject
     [
         new(EditorTool.Road, "Road", "O", Icons.Road, "Click to add points; double-click or Enter finishes, Backspace undoes a point, Esc cancels. Shift+drag erases."),
         new(EditorTool.Prefab, "Prefabs (POIs)", "I", Icons.Prefab, "Pick a prefab on the right, click to place; Q/E turn it. With none picked, click to select, drag to move, Del removes."),
+        new(EditorTool.Trader, "Trader", "A", Icons.Trader, "Click to place the trader picked in the options (Random picks another); Q/E turn it."),
         new(EditorTool.Town, "Town", "G", Icons.Town, "Drag a rectangle to plan a town on whole 150 m cells, then Build (Enter) or Cancel (Esc)."),
         new(EditorTool.Spawn, "Spawn points", "H", Icons.Spawn, "Click to add a spawn point, drag to move, Q/E turn, Del removes. RWG makes 12."),
     ];
@@ -99,10 +103,10 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBrushTool), nameof(IsStampTool), nameof(IsFlattenTool), nameof(IsNoiseTool),
         nameof(HasRadius), nameof(IsBiomeTool), nameof(IsRadiationTool), nameof(IsWaterTool), nameof(IsRoadTool),
-        nameof(IsPrefabTool), nameof(IsSpawnTool), nameof(IsTownTool), nameof(ShowPrefabCard), nameof(CurrentTool),
+        nameof(IsPrefabTool), nameof(IsTraderTool), nameof(IsPrefabsTool), nameof(PlacingPrefab), nameof(IsSpawnTool), nameof(IsSelectTool), nameof(ShowSelectionText), nameof(IsTownTool), nameof(ShowPrefabCard), nameof(CardPrefab), nameof(CardName), nameof(CardText), nameof(CardHasActions), nameof(CurrentTool),
         nameof(HasSize), nameof(SizeValue), nameof(SizeMin), nameof(SizeMax), nameof(SizeText),
         nameof(HasStrength), nameof(StrengthValue), nameof(StrengthMin), nameof(StrengthText), nameof(CurrentSwatch))]
-    private EditorTool _selectedTool = EditorTool.Pan;
+    private EditorTool _selectedTool = EditorTool.Select;
 
     public bool IsBrushTool => SelectedTool is EditorTool.Raise or EditorTool.Lower or EditorTool.Flatten or EditorTool.Smooth or EditorTool.Noise;
     public bool IsStampTool => SelectedTool == EditorTool.Stamp;
@@ -112,8 +116,15 @@ public sealed partial class MainViewModel : ObservableObject
     public bool IsRadiationTool => SelectedTool == EditorTool.Radiation;
     public bool IsWaterTool => SelectedTool == EditorTool.Water;
     public bool IsRoadTool => SelectedTool == EditorTool.Road;
-    public bool IsPrefabTool => SelectedTool == EditorTool.Prefab;
+    /// <summary>The Prefabs tool or the Trader tool, which places a trader the same way.</summary>
+    public bool IsPrefabTool => SelectedTool is EditorTool.Prefab or EditorTool.Trader;
+    public bool IsTraderTool => SelectedTool == EditorTool.Trader;
+    public bool IsPrefabsTool => SelectedTool == EditorTool.Prefab;
     public bool IsSpawnTool => SelectedTool == EditorTool.Spawn;
+    public bool IsSelectTool => SelectedTool == EditorTool.Select;
+
+    /// <summary>The selection text under the ribbon: for spawns, which have no info card.</summary>
+    public bool ShowSelectionText => IsSpawnTool || IsSelectTool && !HasPrefabSelection;
     public bool IsTownTool => SelectedTool == EditorTool.Town;
     public bool HasRadius => IsBrushTool || IsBiomeTool || IsRadiationTool || IsRoadTool;
 
@@ -169,7 +180,46 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty] private bool _roadGrade = true;
 
-    partial void OnRoadTypeChanged(RoadType value) => RoadWidth = value == RoadType.Asphalt ? 18 : 9;
+    partial void OnRoadTypeChanged(RoadType value)
+    {
+        if (!_applyingPreset) RoadWidth = value == RoadType.Asphalt ? 18 : 9;
+    }
+
+    /// <summary>
+    /// Common road sizes: RWG's 4-lane highway (18 m) and 2-lane country road (9 m), lanes being 4.5 m, plus the
+    /// asphalt widths measured on vanilla town tiles.
+    /// </summary>
+    public IReadOnlyList<RoadPreset> RoadPresets { get; } =
+    [
+        new("Highway", RoadType.Asphalt, 18),
+        new("Main street", RoadType.Asphalt, 12),
+        new("Town street", RoadType.Asphalt, 9),
+        new("Residential", RoadType.Asphalt, 6),
+        new("Country road", RoadType.Gravel, 9),
+        new("Track", RoadType.Gravel, 4.5),
+    ];
+
+    private bool _applyingPreset;
+
+    /// <summary>The preset matching the current surface and width, or null for a custom road.</summary>
+    public RoadPreset? SelectedRoadPreset
+    {
+        get => RoadPresets.FirstOrDefault(p => p.Type == RoadType && p.Width == RoadWidth);
+        set
+        {
+            if (value is null) return;
+            _applyingPreset = true;
+            try
+            {
+                RoadType = value.Type;
+                RoadWidth = value.Width;
+            }
+            finally
+            {
+                _applyingPreset = false;
+            }
+        }
+    }
 
     // ---- prefab browser ----------------------------------------------------
 
@@ -206,10 +256,21 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _selectedMapPrefabName = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowPrefabCard))]
+    [NotifyPropertyChangedFor(nameof(ShowPrefabCard), nameof(ShowSelectionText))]
     private bool _hasPrefabSelection;
 
-    public bool ShowPrefabCard => HasPrefabSelection && IsPrefabTool;
+    /// <summary>
+    /// The info card: the prefab selected on the map, or with the Trader tool the trader it will place, so the card
+    /// always shows the trader picked in the options.
+    /// </summary>
+    public bool ShowPrefabCard => IsTraderTool ? SelectedTrader is not null : HasPrefabSelection && (IsPrefabTool || IsSelectTool);
+
+    public PrefabInfo? CardPrefab => IsTraderTool ? SelectedTrader : SelectedMapPrefab;
+    public string CardName => IsTraderTool ? SelectedTrader?.Name ?? "" : SelectedMapPrefabName;
+    public string CardText => IsTraderTool ? PlacementText : SelectionText;
+
+    /// <summary>Raise, lower, replace and delete act on a prefab on the map, so the trader card has none.</summary>
+    public bool CardHasActions => !IsTraderTool;
 
     partial void OnPrefabSearchChanged(string value) => RefreshPrefabResults();
     partial void OnPrefabCategoryChanged(string value) => RefreshPrefabResults();
@@ -258,6 +319,29 @@ public sealed partial class MainViewModel : ObservableObject
         // Start a new pick facing north, the way RWG lines POIs up with their street.
         if (value is not null) PrefabRotation = value.RotationToFaceNorth & 3;
     }
+
+    // ---- trader tool ---------------------------------------------------------
+
+    /// <summary>The trader prefabs in the game (and mods): trader_bob, trader_hugh, trader_jen, trader_joel, trader_rekt.</summary>
+    [ObservableProperty] private IReadOnlyList<PrefabInfo> _traders = [];
+
+    /// <summary>The trader the Trader tool places.</summary>
+    [ObservableProperty] private PrefabInfo? _selectedTrader;
+
+    /// <summary>Picks a different trader at random (any trader if there is only one).</summary>
+    public void PickRandomTrader()
+    {
+        var others = Traders.Where(t => t != SelectedTrader).ToList();
+        SelectedTrader = others.Count > 0 ? others[Random.Shared.Next(others.Count)] : Traders.FirstOrDefault();
+    }
+
+    partial void OnSelectedTraderChanged(PrefabInfo? value)
+    {
+        if (value is not null && IsTraderTool) PrefabRotation = value.RotationToFaceNorth & 3;
+    }
+
+    /// <summary>What the Prefabs or Trader tool places on a click: the browser's pick, or the trader. Null to select.</summary>
+    public PrefabInfo? PlacingPrefab => IsTraderTool ? SelectedTrader : IsPrefabsTool ? SelectedPrefabInfo : null;
 
     // ---- town tool -----------------------------------------------------------
 
@@ -341,12 +425,12 @@ public sealed partial class MainViewModel : ObservableObject
         set
         {
             if (IsStampTool) StampSize = value;
-            else if (IsRoadTool) RoadWidth = Math.Round(value);
+            else if (IsRoadTool) RoadWidth = Math.Round(value * 2) / 2;
             else BrushRadius = value;
         }
     }
 
-    public string SizeText => IsStampTool ? $"{StampSize:0} m" : IsRoadTool ? $"{RoadWidth:0} m wide" : $"{BrushRadius * 2:0} m";
+    public string SizeText => IsStampTool ? $"{StampSize:0} m" : IsRoadTool ? $"{RoadWidth:0.#} m wide" : $"{BrushRadius * 2:0} m";
 
     /// <summary>The strength slider: brush strength or stamp strength.</summary>
     public bool HasStrength => IsBrushTool || IsStampTool;
@@ -386,13 +470,29 @@ public sealed partial class MainViewModel : ObservableObject
             case nameof(BrushRadius) or nameof(StampSize) or nameof(RoadWidth):
                 base.OnPropertyChanged(nameof(SizeValue));
                 base.OnPropertyChanged(nameof(SizeText));
+                if (e.PropertyName == nameof(RoadWidth)) base.OnPropertyChanged(nameof(SelectedRoadPreset));
                 break;
             case nameof(BrushStrength) or nameof(StampStrength):
                 base.OnPropertyChanged(nameof(StrengthValue));
                 base.OnPropertyChanged(nameof(StrengthText));
                 break;
+            case nameof(SelectedTrader):
+                base.OnPropertyChanged(nameof(ShowPrefabCard));
+                base.OnPropertyChanged(nameof(CardPrefab));
+                base.OnPropertyChanged(nameof(CardName));
+                break;
+            case nameof(SelectedMapPrefab):
+                base.OnPropertyChanged(nameof(CardPrefab));
+                break;
+            case nameof(SelectedMapPrefabName):
+                base.OnPropertyChanged(nameof(CardName));
+                break;
+            case nameof(SelectionText) or nameof(PlacementText):
+                base.OnPropertyChanged(nameof(CardText));
+                break;
             case nameof(SelectedBiome) or nameof(RoadType):
                 base.OnPropertyChanged(nameof(CurrentSwatch));
+                if (e.PropertyName == nameof(RoadType)) base.OnPropertyChanged(nameof(SelectedRoadPreset));
                 break;
         }
     }
@@ -436,4 +536,9 @@ public sealed partial class MainViewModel : ObservableObject
 }
 
 /// <summary>A palette entry: a biome or a road surface.</summary>
+public sealed record RoadPreset(string Name, RoadType Type, double Width)
+{
+    public override string ToString() => $"{Name}  ({Width:0.#} m)";
+}
+
 public sealed record Swatch(string Label, uint Color, BiomeDefinition? Biome, RoadType? Road);

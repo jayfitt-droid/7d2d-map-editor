@@ -327,12 +327,24 @@
                         </StackPanel>
 
                         <StackPanel Style="{StaticResource OptionGroup}" Visibility="{Binding IsRoadTool, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="Preset" Style="{StaticResource OptionLabel}" />
+                            <ComboBox ItemsSource="{Binding RoadPresets}" SelectedItem="{Binding SelectedRoadPreset}" MinWidth="170" Margin="0,0,16,0"
+                                      AutomationProperties.Name="Road preset"
+                                      ToolTip="Common road sizes. Highway and Country road are RWG's own; the size slider still sets any width." />
                             <TextBlock Text="Surface" Style="{StaticResource OptionLabel}" />
                             <ComboBox ItemsSource="{Binding RoadTypes}" SelectedItem="{Binding RoadType}" MinWidth="100" AutomationProperties.Name="Road surface" />
                             <CheckBox Content="Grade the terrain under the road" IsChecked="{Binding RoadGrade}" Margin="16,0,0,0" />
                         </StackPanel>
 
-                        <StackPanel Style="{StaticResource OptionGroup}" Visibility="{Binding IsPrefabTool, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel Style="{StaticResource OptionGroup}" Visibility="{Binding IsTraderTool, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="Trader" Style="{StaticResource OptionLabel}" />
+                            <ComboBox ItemsSource="{Binding Traders}" SelectedItem="{Binding SelectedTrader}" DisplayMemberPath="Name" MinWidth="140"
+                                      AutomationProperties.Name="Trader" />
+                            <Button Content="Random" Margin="4,0,16,0" Click="TraderRandom_Click" ToolTip="Pick another trader at random" />
+                            <CheckBox Content="Flatten the ground under it" IsChecked="{Binding PrefabFlatten}" />
+                        </StackPanel>
+
+                        <StackPanel Style="{StaticResource OptionGroup}" Visibility="{Binding IsPrefabsTool, Converter={StaticResource BoolToVisibility}}">
                             <CheckBox Content="Flatten the ground under it" IsChecked="{Binding PrefabFlatten}" />
                             <CheckBox Content="Add street furniture to street tiles" IsChecked="{Binding PrefabAddParts}" />
                             <Button Content="Prefab browser" Click="ShowPrefabBrowser_Click" />
@@ -371,7 +383,7 @@
                     <TextBlock Text="{Binding PlacementText}" Style="{StaticResource HintText}" Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                Visibility="{Binding IsPrefabTool, Converter={StaticResource BoolToVisibility}}" />
                     <TextBlock Text="{Binding SelectionText}" Style="{StaticResource HintText}" Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                               Visibility="{Binding IsSpawnTool, Converter={StaticResource BoolToVisibility}}" />
+                               Visibility="{Binding ShowSelectionText, Converter={StaticResource BoolToVisibility}}" />
                     <TextBlock Text="{Binding CurrentTool.Hint}" Style="{StaticResource HintText}" Margin="0,4,0,0" />
                 </StackPanel>
             </DockPanel>
@@ -533,7 +545,7 @@
                          DimMap="{Binding DimMap}"
                          AutomationProperties.Name="Map" />
 
-            <!-- Info card for the prefab selected on the map. -->
+            <!-- Info card for the prefab selected on the map, or the trader the Trader tool places. -->
             <Border Width="300" Margin="12" HorizontalAlignment="Left" VerticalAlignment="Top" Padding="12" CornerRadius="8" BorderThickness="1"
                     Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorFlyoutBrush}"
                     Visibility="{Binding ShowPrefabCard, Converter={StaticResource BoolToVisibility}}">
@@ -541,24 +553,27 @@
                     <StackPanel>
                         <DockPanel>
                             <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="✕" Padding="6,0"
+                                    Visibility="{Binding CardHasActions, Converter={StaticResource BoolToVisibility}}"
                                     ToolTip="Deselect (Esc)" AutomationProperties.Name="Deselect" Click="PrefabCardClose_Click" />
-                            <TextBlock Text="{Binding SelectedMapPrefabName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding CardName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                         </DockPanel>
-                        <ContentControl Content="{Binding SelectedMapPrefab}" Style="{StaticResource PrefabPreview}"
+                        <ContentControl Content="{Binding CardPrefab}" Style="{StaticResource PrefabPreview}"
                                         MaxHeight="200" Margin="0,6,0,0" />
-                        <TextBlock Text="{Binding SelectionText}" Style="{StaticResource HintText}" Margin="0,6,0,0"
+                        <TextBlock Text="{Binding CardText}" Style="{StaticResource HintText}" Margin="0,6,0,0"
                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
                         <UniformGrid Columns="4" Margin="0,8,0,0">
                             <Button Content="↺ Q" ToolTip="Turn a quarter counter-clockwise" Margin="0,0,3,0" Padding="2,4" Click="PrefabTurnLeft_Click" />
                             <Button Content="↻ E" ToolTip="Turn a quarter clockwise" Margin="0,0,3,0" Padding="2,4" Click="PrefabTurnRight_Click" />
-                            <Button Content="▲ PgUp" ToolTip="Raise one block (the ground stays)" Margin="0,0,3,0" Padding="2,4" Click="PrefabRaise_Click" />
-                            <Button Content="▼ PgDn" ToolTip="Lower one block (the ground stays)" Padding="2,4" Click="PrefabLower_Click" />
+                            <Button Content="▲ PgUp" IsEnabled="{Binding CardHasActions}" ToolTip="Raise one block (the ground stays)" Margin="0,0,3,0" Padding="2,4" Click="PrefabRaise_Click" />
+                            <Button Content="▼ PgDn" IsEnabled="{Binding CardHasActions}" ToolTip="Lower one block (the ground stays)" Padding="2,4" Click="PrefabLower_Click" />
                         </UniformGrid>
                         <Button Margin="0,4,0,0" HorizontalAlignment="Stretch" IsEnabled="{Binding CanReplace}" Click="PrefabReplace_Click"
+                                Visibility="{Binding CardHasActions, Converter={StaticResource BoolToVisibility}}"
                                 ToolTip="Pick a prefab in the browser, then swap it in here, facing the same way">
                             <TextBlock Text="{Binding ReplaceLabel}" TextTrimming="CharacterEllipsis" />
                         </Button>
-                        <Button Content="Delete  (Del)" Margin="0,4,0,0" HorizontalAlignment="Stretch" Click="PrefabDelete_Click" />
+                        <Button Content="Delete  (Del)" Margin="0,4,0,0" HorizontalAlignment="Stretch" Click="PrefabDelete_Click"
+                                Visibility="{Binding CardHasActions, Converter={StaticResource BoolToVisibility}}" />
                     </StackPanel>
                 </ScrollViewer>
             </Border>

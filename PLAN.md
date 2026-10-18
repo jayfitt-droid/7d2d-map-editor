@@ -63,6 +63,25 @@ tests/MapEditor.Core.Tests/
    - **Canvas:** centred on a dark backdrop with a clear edge around the world; the minimap is a toggle in View.
    - **Look:** follow the Windows light/dark theme; consistent icon set (Segoe Fluent Icons); keyboard access to every control; works at 100–200% display scaling and down to 1366×768.
    - Done when a new user can find and use every tool without reading docs, and all existing shortcuts still work. Then ship as v1.0.
+10. **v1.1 features** (the user's list, 2026-10-18; design choices made by the user):
+   - **Road snapping:**
+     - **End snap:** near the end of any road on the map (found in splat3, so it covers RWG roads and opened worlds), the first click snaps to that end. The new road carries on in the old road's direction, with its width and surface.
+     - **Angle snap:** a segment within about 5° of 0/90/180/270 snaps to it. Hold Alt to draw freely.
+   - **Road width presets:**
+     - Asphalt: Highway 18 m (RWG's 4-lane highway), Main street 12 m, Town street 9 m, Residential 6 m.
+     - Gravel: Country road 9 m (RWG's 2-lane country road), Track 4.5 m (one lane).
+     - Picking one sets the surface and the width. The slider still sets any width.
+   - **Trader tool** in the Build group: picks a random vanilla trader, which can be changed from a short list, then places it like the Prefab tool (ghost, rotation, flatten).
+   - **Remove a proposed link road:** in a town plan, clicking a link road turns it off, leaving its exit unjoined; clicking again brings it back.
+   - **Resize the town box:** after the drag, drag an edge or corner of the box to resize it in 150 m tile steps, and the town replans.
+   - **POI snapping to tiles** (added later the same day): a POI or trader being placed or dragged snaps to the edges of street tiles nearby (against a side, flush inside, or lined up with the sides); it does not snap to other POIs. Dropped so it covers another POI's centre, it replaces that POI (shown red) in the same undo step. Alt turns snapping off.
+   - **Roads meet POIs and towns level** (from the user's in-game testing): a road placed first used to end in a step up or down where a POI, trader or town was built against it, since the footprint is flattened to its own ground and the road is resmoothed back to its old height. Now `RoadOp.RampToFootprints` ramps the road that touches the footprint (within 3 m) onto its ground, over 40–150 m (25 m per metre of height), with the ground beside the road following. Other roads nearby are left alone.
+     - **Revisit (the user asked):** the alternative is for the POI or town to take the road's height instead, or a per-placement option between the two.
+   - **Select tool replaces Pan** (the user's request): click a POI, trader, street tile or spawn point to select it (parts aren't picked); drag to move, Q/E, PgUp/PgDn, Del as before. A drag on empty ground pans, as Pan did. Shortcut V. The Prefabs and Spawn tools keep their own selecting (the user's choice). New worlds start on Select.
+   - **Stamp preview:** the Stamp tool's cursor shows the stamp from above (`StampPicture`: shaded heights, see-through where its alpha fades, blue for its water), turned and sized as it will be stamped.
+   - **Themed message boxes:** every message box is now `ThemedMessageBox` (same arguments as `MessageBox.Show`), in the Fluent theme. Open, save and folder pickers stay the Windows ones, which follow the Windows theme.
+   - Done when each works in the editor and in a new game. Then ship as v1.1.0.
+   - **Status (2026-10-18):** all six built, with tests for finding road ends (`RoadEndTests`) and for POI snapping and covering (`PrefabTests`). Not yet checked by the user. The Trader tool's shortcut is A; Alt+click places without snapping.
 
 Each milestone ends with a world that loads in game.
 

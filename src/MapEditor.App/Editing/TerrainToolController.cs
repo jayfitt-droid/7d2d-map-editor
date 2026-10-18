@@ -38,8 +38,8 @@ public sealed class TerrainToolController
     private void OnToolInput(object? sender, ToolInputEventArgs e)
     {
         if (World is not { } world) return;
-        // The Prefabs and Spawn points tools have their own controller.
-        if (_vm.SelectedTool is EditorTool.Prefab or EditorTool.Spawn or EditorTool.Town) return;
+        // The Select, Prefabs, Trader, Spawn points and Town tools have their own controllers.
+        if (_vm.SelectedTool is EditorTool.Select or EditorTool.Prefab or EditorTool.Trader or EditorTool.Spawn or EditorTool.Town) return;
         // No edits while the world is being saved or replaced; a stroke already under way may finish.
         if (_vm.IsBusy && e.Phase == ToolPhase.Down) return;
         var grid = new Point(e.MapPoint.X, world.Size - e.MapPoint.Y);
@@ -61,7 +61,7 @@ public sealed class TerrainToolController
         if (_vm.SelectedTool == EditorTool.Road && e.Phase == ToolPhase.Down && !e.Modifiers.HasFlag(ModifierKeys.Shift))
         {
             if (e.ClickCount >= 2) FinishRoad();
-            else AddRoadPoint(world, grid);
+            else AddRoadPoint(world, grid, e.Modifiers);
             return;
         }
 
@@ -83,7 +83,7 @@ public sealed class TerrainToolController
     private void BeginStroke(World world, Point grid)
     {
         var tool = _vm.SelectedTool;
-        if (tool == EditorTool.Pan) return;
+        if (tool == EditorTool.Select) return;
         string label = _vm.Tools.First(t => t.Tool == tool).Label;
         if (_erase && tool == EditorTool.Radiation) label = "Erase radiation";
         if (_erase && tool == EditorTool.Water) label = "Drain water";
@@ -187,14 +187,73 @@ public sealed class TerrainToolController
 
     public bool IsDrawingRoad => _roadPoints.Count > 0;
 
-    private void AddRoadPoint(World world, Point grid)
+    private void AddRoadPoint(World world, Point grid, ModifierKeys modifiers)
     {
         if (!world.Height.Contains((int)grid.X, (int)grid.Y)) return;
-        var point = new Vector2((float)grid.X, (float)grid.Y);
+        var (point, end) = SnapRoadPoint(world, new Vector2((float)grid.X, (float)grid.Y), modifiers);
         // Clicking the last point again adds nothing.
         if (_roadPoints.Count > 0 && Vector2.Distance(_roadPoints[^1], point) < 1) return;
         _roadPoints.Add(point);
+        // Carrying a road on: take its surface and width, so the two join without a step.
+        if (_roadPoints.Count == 1)
+        {
+            _startHeading = end?.Direction;
+            if (end is not null) _vm.SelectedRoadPreset = new RoadPreset("", end.Type, MatchWidth(end));
+        }
         UpdateRoadPreview();
+        if (_roadPoints.Count == 1 && end is not null)
+            _vm.Status = $"Carrying on a {_vm.RoadWidth:0.#} m {end.Type.ToString().ToLowerInvariant()} road. " + _vm.Status;
+    }
+
+    /// <summary>A measured road width, as the nearest preset of its surface when it is within a metre of one.</summary>
+    private double MatchWidth(RoadEnd end)
+    {
+        double width = end.Radius * 2;
+        var preset = _vm.RoadPresets.Where(p => p.Type == end.Type).MinBy(p => Math.Abs(p.Width - width));
+        return preset is not null && Math.Abs(preset.Width - width) <= 1 ? preset.Width : Math.Round(width * 2) / 2;
+    }
+
+    /// <summary>Within this many degrees of north, south, east or west (or of the road being carried on), a segment snaps to it.</summary>
+    private const double AngleSnapDegrees = 5;
+
+    /// <summary>How near (in screen pixels) the mouse must be to a road's end to snap to it.</summary>
+    private const double EndSnapPixels = 20;
+
+    private Vector2? _startHeading; // the way the road being carried on was heading, if the first point snapped to its end
+
+    /// <summary>
+    /// Where a click at <paramref name="grid"/> puts the next road point: on a road end nearby, else with the segment
+    /// from the last point turned onto a nearby compass direction (or the heading of the road being carried on).
+    /// Alt turns snapping off.
+    /// </summary>
+    private (Vector2 Point, RoadEnd? End) SnapRoadPoint(World world, Vector2 grid, ModifierKeys modifiers)
+    {
+        if (modifiers.HasFlag(ModifierKeys.Alt)) return (grid, null);
+        float reach = (float)Math.Clamp(EndSnapPixels / _map.Scale, 6, 60);
+        if (world.Roads is { } roads && RoadEnds.Find(roads, grid, reach) is { } end) return (end.Point, end);
+        if (_roadPoints.Count == 0) return (grid, null);
+
+        var from = _roadPoints[^1];
+        var d = grid - from;
+        if (d.Length() < 1) return (grid, null);
+        IEnumerable<Vector2> headings = [new(1, 0), new(0, 1), new(-1, 0), new(0, -1)];
+        if (_roadPoints.Count == 1 && _startHeading is { } h) headings = headings.Prepend(h);
+        double cos = Math.Cos(AngleSnapDegrees * Math.PI / 180);
+        foreach (var heading in headings)
+        {
+            float along = Vector2.Dot(d, heading);
+            if (along > 0 && along / d.Length() >= cos) return (from + heading * along, null);
+        }
+        return (grid, null);
+    }
+
+    /// <summary>Where the road tool would put a point for the mouse at <paramref name="mapPoint"/> (map coordinates), for the preview.</summary>
+    public RoadSnap? SnapCursor(Point mapPoint)
+    {
+        if (World is not { } world || _vm.SelectedTool != EditorTool.Road) return null;
+        var grid = new Vector2((float)mapPoint.X, (float)(world.Size - mapPoint.Y));
+        var (point, end) = SnapRoadPoint(world, grid, Keyboard.Modifiers);
+        return new RoadSnap(new Point(point.X, world.Size - point.Y), end is not null);
     }
 
     /// <summary>Removes the last point of the road being drawn.</summary>
@@ -202,6 +261,7 @@ public sealed class TerrainToolController
     {
         if (_roadPoints.Count == 0) return;
         _roadPoints.RemoveAt(_roadPoints.Count - 1);
+        if (_roadPoints.Count == 0) _startHeading = null;
         UpdateRoadPreview();
     }
 
@@ -209,6 +269,7 @@ public sealed class TerrainToolController
     {
         if (_roadPoints.Count == 0) return;
         _roadPoints.Clear();
+        _startHeading = null;
         UpdateRoadPreview();
         _vm.Status = "Road cancelled.";
     }
@@ -227,6 +288,7 @@ public sealed class TerrainToolController
         var rect = RoadOp.Draw(world, road, session);
         float length = RoadOp.Length(_roadPoints);
         _roadPoints.Clear();
+        _startHeading = null;
         UpdateRoadPreview();
         _map.InvalidateRegion(rect);
         _vm.Status = $"Drew {length:N0} m of {_vm.RoadType.ToString().ToLowerInvariant()} road.";

@@ -4,7 +4,7 @@ namespace MapEditor.App;
 
 public enum EditorTool
 {
-    Pan,
+    Select,
     Raise,
     Lower,
     Flatten,
@@ -16,6 +16,7 @@ public enum EditorTool
     Water,
     Road,
     Prefab,
+    Trader,
     Spawn,
     Town,
 }

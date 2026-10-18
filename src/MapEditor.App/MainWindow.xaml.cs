@@ -155,7 +155,7 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) != true) return;
         if (!GameInstall.IsValid(dialog.FolderName))
         {
-            MessageBox.Show(this, "That folder has no Data\\Config\\biomes.xml, so it doesn't look like a 7 Days to Die install.",
+            ThemedMessageBox.Show(this, "That folder has no Data\\Config\\biomes.xml, so it doesn't look like a 7 Days to Die install.",
                 "Game Folder", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -237,7 +237,7 @@ public partial class MainWindow : Window
                                        or System.Xml.XmlException)
         {
             _vm.Status = "Failed to open the project";
-            MessageBox.Show(this, ex.Message, "Open", MessageBoxButton.OK, MessageBoxImage.Error);
+            ThemedMessageBox.Show(this, ex.Message, "Open", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -277,7 +277,7 @@ public partial class MainWindow : Window
         catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or UnauthorizedAccessException or System.Xml.XmlException)
         {
             _vm.Status = "Failed to load world";
-            MessageBox.Show(this, ex.Message, "Open World", MessageBoxButton.OK, MessageBoxImage.Error);
+            ThemedMessageBox.Show(this, ex.Message, "Open World", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -300,7 +300,7 @@ public partial class MainWindow : Window
         _prefabTools.World = world;
         _prefabTools.Refresh();
         _townTools.World = world;
-        _vm.SelectedTool = EditorTool.Pan;
+        _vm.SelectedTool = EditorTool.Select;
         _townTools.Refresh();
         LoadMixer();
         _dirty = dirty;
@@ -357,7 +357,7 @@ public partial class MainWindow : Window
             if (dialog.ShowDialog(this) != true) return false;
             if (IsGameWorldsPath(dialog.FileName))
             {
-                MessageBox.Show(this, "Projects can't be saved in the game's world folders. Choose another folder, such as Documents.",
+                ThemedMessageBox.Show(this, "Projects can't be saved in the game's world folders. Choose another folder, such as Documents.",
                     "Save project", MessageBoxButton.OK, MessageBoxImage.Warning);
                 continue;
             }
@@ -398,7 +398,7 @@ public partial class MainWindow : Window
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _vm.Status = "Save failed";
-            MessageBox.Show(this, ex.Message, "Save", MessageBoxButton.OK, MessageBoxImage.Error);
+            ThemedMessageBox.Show(this, ex.Message, "Save", MessageBoxButton.OK, MessageBoxImage.Error);
             return false;
         }
         finally
@@ -439,7 +439,7 @@ public partial class MainWindow : Window
             var found = LevelFile.FindTemplate(_install);
             if (found is null)
             {
-                MessageBox.Show(this, "The world needs a main.ttw and none could be found to copy. Generate any world in the game once, then export again.",
+                ThemedMessageBox.Show(this, "The world needs a main.ttw and none could be found to copy. Generate any world in the game once, then export again.",
                     "Export World", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return false;
             }
@@ -479,7 +479,7 @@ public partial class MainWindow : Window
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             _vm.Status = "Export failed";
-            MessageBox.Show(this, ex.Message, "Export World", MessageBoxButton.OK, MessageBoxImage.Error);
+            ThemedMessageBox.Show(this, ex.Message, "Export World", MessageBoxButton.OK, MessageBoxImage.Error);
             return false;
         }
         finally
@@ -604,7 +604,7 @@ public partial class MainWindow : Window
         // Let the window draw first, so the question doesn't sit on a blank window.
         await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ContextIdle);
         var when = File.GetLastWriteTime(AutosavePath);
-        var answer = MessageBox.Show(this,
+        var answer = ThemedMessageBox.Show(this,
             $"The editor did not close normally last time. Recover the work autosaved at {when:g}?",
             "Recover unsaved work", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer == MessageBoxResult.Yes) await OpenProjectAsync(AutosavePath, recovered: true);
@@ -622,7 +622,7 @@ public partial class MainWindow : Window
         var games = GameInstall.SavedGamesOn(worldName);
         if (games.Count == 0 || !_warnedAboutGames.Add(worldName)) return;
         string list = string.Join("\n", games.Take(8).Select(g => "  • " + g)) + (games.Count > 8 ? $"\n  … and {games.Count - 8} more" : "");
-        MessageBox.Show(this,
+        ThemedMessageBox.Show(this,
             $"The game already has saved games on {worldName}:\n\n{list}\n\n" +
             "Those games keep the terrain, plants and water they have already generated, so your changes only appear " +
             "where they have not been yet. Start a new game on this world to see the changes everywhere.\n\n" +
@@ -634,7 +634,8 @@ public partial class MainWindow : Window
     private async Task<bool> ConfirmDiscardAsync()
     {
         if (_world is null || !_dirty) return true;
-        var answer = MessageBox.Show(this, $"Save changes to {_world.Name}?", "7D2D Map Editor", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+        var answer = ThemedMessageBox.Show(this, $"Save changes to {_world.Name}?", "7D2D Map Editor", MessageBoxButton.YesNoCancel, MessageBoxImage.Question,
+            ["Save", "Don't save", "Cancel"]);
         return answer switch
         {
             MessageBoxResult.Yes => await SaveAsync(saveAs: false),
@@ -720,7 +721,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException)
         {
-            MessageBox.Show(this, ex.Message, "Import Heightmap", MessageBoxButton.OK, MessageBoxImage.Error);
+            ThemedMessageBox.Show(this, ex.Message, "Import Heightmap", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -839,10 +840,10 @@ public partial class MainWindow : Window
         var result = await Updates.CheckAsync(_settings);
         if (result.Update is null)
         {
-            MessageBox.Show(this, result.Message, "Check for Updates", MessageBoxButton.OK, MessageBoxImage.Information);
+            ThemedMessageBox.Show(this, result.Message, "Check for Updates", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        if (MessageBox.Show(this, result.Message + "\n\nInstall it now? The editor restarts.", "Check for Updates",
+        if (ThemedMessageBox.Show(this, result.Message + "\n\nInstall it now? The editor restarts.", "Check for Updates",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
         if (!await ConfirmDiscardAsync()) return;
@@ -875,7 +876,7 @@ public partial class MainWindow : Window
     private void About_Click(object sender, RoutedEventArgs e)
     {
         var version = typeof(MainWindow).Assembly.GetName().Version;
-        MessageBox.Show(this,
+        ThemedMessageBox.Show(this,
             $"7D2D Map Editor {version?.ToString(3)}\n\nMakes and edits 7 Days to Die worlds. Game assets are read from your own install " +
             "and never shipped with the editor.\n\nNot made by or affiliated with The Fun Pimps.",
             "About", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -896,16 +897,19 @@ public partial class MainWindow : Window
                 Overview.SetRenderer(renderer, _vm.Layers);
                 break;
             case nameof(MainViewModel.SelectedTool):
-                if (_vm.IsPrefabTool)
+                if (_vm.SelectedTool == EditorTool.Prefab)
                 {
                     _vm.SidePanelTab = 0;
                     _vm.ShowSidePanel = true;
                 }
                 if (!_vm.IsRoadTool) _tools.CancelRoad();
+                // The trader starts facing north, as a new pick in the browser does.
+                if (_vm.IsTraderTool && _vm.SelectedTrader is { } trader) _vm.PrefabRotation = trader.RotationToFaceNorth & 3;
                 _prefabTools.Refresh();
                 _townTools.Refresh();
                 UpdateToolState();
                 break;
+            case nameof(MainViewModel.SelectedTrader):
             case nameof(MainViewModel.SelectedPrefabInfo):
             case nameof(MainViewModel.PrefabRotation):
                 _prefabTools.UpdateGhost();
@@ -919,6 +923,7 @@ public partial class MainWindow : Window
             case nameof(MainViewModel.BrushRadius):
             case nameof(MainViewModel.StampSize):
             case nameof(MainViewModel.StampRotation):
+            case nameof(MainViewModel.SelectedStamp):
             case nameof(MainViewModel.BrushShape):
             case nameof(MainViewModel.BrushRotation):
                 UpdateToolState();
@@ -929,14 +934,18 @@ public partial class MainWindow : Window
     private void UpdateToolState()
     {
         _vm.SelectionSizeText = _vm.HasSize ? _vm.SizeText : "";
-        Map.ToolActive = _vm.SelectedTool != EditorTool.Pan;
+        Map.ToolActive = _vm.SelectedTool != EditorTool.Select;
+        // With Select, a press on something that can be picked grabs it; anywhere else it pans.
+        Map.GrabTest = _vm.IsSelectTool ? _prefabTools.CanGrab : null;
         Map.ShowLots = _vm.IsPrefabTool;
+        Map.RoadSnapper = _vm.IsRoadTool ? _tools.SnapCursor : null;
         if (!_vm.IsPrefabTool) Map.HoverPrefab = null;
         Map.BrushCursor = _vm.SelectedTool switch
         {
-            EditorTool.Pan or EditorTool.Water or EditorTool.Prefab or EditorTool.Spawn or EditorTool.Town => null,
+            EditorTool.Select or EditorTool.Water or EditorTool.Prefab or EditorTool.Trader or EditorTool.Spawn or EditorTool.Town => null,
             EditorTool.Road => new BrushCursor(_vm.RoadWidth),
-            EditorTool.Stamp => new BrushCursor(_vm.StampSize, Square: true, _vm.StampRotation),
+            EditorTool.Stamp => new BrushCursor(_vm.StampSize, Square: true, _vm.StampRotation,
+                _vm.SelectedStamp is { } stamp ? StampPicture.Get(_vm.Stamps, stamp, UpdateToolState) : null),
             _ => new BrushCursor(_vm.BrushRadius * 2, _vm.IsSquareBrush, _vm.BrushRotation),
         };
     }
@@ -944,14 +953,15 @@ public partial class MainWindow : Window
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
         base.OnPreviewKeyDown(e);
+        if (AltTurnsOffSnapping(e)) return;
         // Leave typing in text boxes alone.
         if (e.Handled || Keyboard.FocusedElement is TextBox || Keyboard.Modifiers != ModifierKeys.None) return;
 
         if (_vm.IsTownTool && e.Key == Key.Escape && _townTools.Cancel()) { e.Handled = true; return; }
         if (_vm.IsTownTool && e.Key == Key.Enter && _townTools.Accept()) { e.Handled = true; return; }
         if (e.Key == Key.Escape && _prefabTools.Cancel()) { e.Handled = true; return; }
-        if (e.Key == Key.Delete && (_vm.IsPrefabTool || _vm.IsSpawnTool)) { _prefabTools.DeleteSelected(); e.Handled = true; return; }
-        if (e.Key is Key.PageUp or Key.PageDown && _vm.IsPrefabTool)
+        if (e.Key == Key.Delete && (_vm.IsPrefabTool || _vm.IsSpawnTool || _vm.IsSelectTool)) { _prefabTools.DeleteSelected(); e.Handled = true; return; }
+        if (e.Key is Key.PageUp or Key.PageDown && (_vm.IsPrefabTool || _vm.IsSelectTool))
         {
             _prefabTools.NudgeHeight(e.Key == Key.PageUp ? 1 : -1);
             e.Handled = true;
@@ -989,11 +999,32 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    protected override void OnPreviewKeyUp(KeyEventArgs e)
+    {
+        base.OnPreviewKeyUp(e);
+        AltTurnsOffSnapping(e);
+    }
+
+    /// <summary>
+    /// With the road, prefab and trader tools, Alt is held to place without snapping, so it redraws the preview and
+    /// doesn't open the menu.
+    /// </summary>
+    private bool AltTurnsOffSnapping(KeyEventArgs e)
+    {
+        if (!(_vm.IsRoadTool || _vm.IsPrefabTool) || e.Key != Key.System || e.SystemKey is not (Key.LeftAlt or Key.RightAlt)) return false;
+        if (_vm.IsPrefabTool) _prefabTools.UpdateGhost();
+        Map.InvalidateVisual();
+        e.Handled = true;
+        return true;
+    }
+
     private void Rotate(double degrees)
     {
         // Prefabs turn a quarter at a time; positive quarter turns are counter-clockwise, so Q (-) gives +1.
         if (_vm.IsPrefabTool) _prefabTools.Rotate(degrees < 0 ? 1 : -1);
         else if (_vm.IsSpawnTool) _prefabTools.RotateSpawn(degrees < 0 ? -45 : 45);
+        else if (_vm.IsSelectTool && _prefabTools.HasSpawnSelected) _prefabTools.RotateSpawn(degrees < 0 ? -45 : 45);
+        else if (_vm.IsSelectTool) _prefabTools.Rotate(degrees < 0 ? 1 : -1);
         else if (_vm.SelectedTool == EditorTool.Stamp) _vm.StampRotation = (_vm.StampRotation + degrees + 360) % 360;
         else if (_vm.HasRadius && _vm.IsSquareBrush) _vm.BrushRotation = (_vm.BrushRotation + degrees + 360) % 360;
     }
@@ -1016,7 +1047,7 @@ public partial class MainWindow : Window
         int z = world.Size - 1 - (int)Math.Floor(m.Y);
         var info = WorldQuery.At(world, x, z, _vm.Biomes, _vm.Prefabs);
         _vm.CursorText = info is null ? "" : MainViewModel.FormatPoint(info);
-        Map.HoverPrefab = _vm.ShowPrefabs && (_vm.SelectedTool == EditorTool.Pan || _vm.IsPrefabTool && _vm.SelectedPrefabInfo is null)
+        Map.HoverPrefab = _vm.ShowPrefabs && (_vm.SelectedTool == EditorTool.Select || _vm.IsPrefabTool && _vm.PlacingPrefab is null)
             ? info?.Prefab : null;
     }
 
@@ -1069,6 +1100,8 @@ public partial class MainWindow : Window
     // ---- prefab info card --------------------------------------------------
 
     private void TownReroll_Click(object sender, RoutedEventArgs e) => WithMapFocus(_townTools.Reroll);
+
+    private void TraderRandom_Click(object sender, RoutedEventArgs e) => WithMapFocus(_vm.PickRandomTrader);
     private void TownBuild_Click(object sender, RoutedEventArgs e) => WithMapFocus(() => _townTools.Accept());
     private void TownCancel_Click(object sender, RoutedEventArgs e) => WithMapFocus(() => _townTools.Cancel());
 
@@ -1125,7 +1158,7 @@ public partial class MainWindow : Window
         bool isProject = path.EndsWith(ProjectStore.Extension, StringComparison.OrdinalIgnoreCase);
         if (isProject ? !File.Exists(path) : !Directory.Exists(path))
         {
-            if (MessageBox.Show(this, $"{path}\n\nThis can't be found. It may have been moved, renamed or deleted. Remove it from the list?",
+            if (ThemedMessageBox.Show(this, $"{path}\n\nThis can't be found. It may have been moved, renamed or deleted. Remove it from the list?",
                     "Open Recent", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
             {
                 _settings.RecentFiles.Remove(path);

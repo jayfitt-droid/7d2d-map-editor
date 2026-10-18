@@ -261,6 +261,104 @@ public static class RoadOp
         return outer;
     }
 
+    /// <summary>A road pixel this close (in metres) to a footprint counts as meeting it.</summary>
+    private const float JoinTouch = 3;
+
+    /// <summary>Ramps are at least this long (in metres) and at most <see cref="RampMax"/>; in between, 1 m of height per <see cref="RampRun"/> m.</summary>
+    private const float RampMin = 40, RampMax = 150, RampRun = 25;
+
+    /// <summary>
+    /// Ramps roads that meet flattened <paramref name="footprints"/> (a POI, or a town's tiles) up or down to the
+    /// footprints' ground, <paramref name="height"/> metres, so they run into it without a step. Only roads that reach
+    /// within <see cref="JoinTouch"/> m of a footprint are changed, and only the stretch joined to that point: each
+    /// pixel moves toward the ground height in full at the edge, fading out (smoothstep) over a ramp whose length
+    /// grows with the height gap. The ground a few metres beside the road follows it, and the footprints themselves
+    /// are left alone. Returns the area changed.
+    /// </summary>
+    public static GridRect RampToFootprints(World world, IReadOnlyList<GridRect> footprints, float height, EditSession session)
+    {
+        if (world.Roads is not { } roads || footprints.Count == 0) return GridRect.Empty;
+        var bounds = footprints.Aggregate(GridRect.Empty, (r, f) => r.Union(f));
+        const int Side = 6;
+        int reach = (int)RampMax + Side + 1;
+        var work = new GridRect(bounds.X0 - reach, bounds.Z0 - reach, bounds.X1 + reach, bounds.Z1 + reach).Clamp(world.Size, world.Size);
+        if (work.IsEmpty) return GridRect.Empty;
+        int w = work.X1 - work.X0, d = work.Z1 - work.Z0;
+
+        // Distance from each pixel to the nearest footprint (0 inside one).
+        var distance = new float[w * d];
+        Array.Fill(distance, float.MaxValue);
+        foreach (var f in footprints)
+            for (int z = 0; z < d; z++)
+            {
+                int gz = work.Z0 + z, dz = gz < f.Z0 ? f.Z0 - gz : gz >= f.Z1 ? gz - (f.Z1 - 1) : 0;
+                if (dz > reach) continue;
+                for (int x = Math.Max(0, f.X0 - reach - work.X0); x < Math.Min(w, f.X1 + reach - work.X0); x++)
+                {
+                    int gx = work.X0 + x, dx = gx < f.X0 ? f.X0 - gx : gx >= f.X1 ? gx - (f.X1 - 1) : 0;
+                    float dist = MathF.Sqrt(dx * dx + dz * dz);
+                    if (dist < distance[z * w + x]) distance[z * w + x] = dist;
+                }
+            }
+
+        bool IsRoad(int i) => roads[work.X0 + i % w, work.Z0 + i / w] != 0 && distance[i] > 0;
+        float H(int i) => World.HeightToMetres(world.Height[work.X0 + i % w, work.Z0 + i / w]);
+
+        // The road pixels touching a footprint, and how far the road sits above or below its ground there.
+        var touching = new List<int>();
+        for (int i = 0; i < w * d; i++)
+            if (distance[i] <= JoinTouch && IsRoad(i)) touching.Add(i);
+        if (touching.Count == 0) return GridRect.Empty;
+        var gaps = touching.Select(i => H(i) - height).OrderBy(g => g).ToList();
+        float gap = gaps[gaps.Count / 2];
+        if (MathF.Abs(gap) < 0.05f) return GridRect.Empty;
+        float ramp = Math.Clamp(MathF.Abs(gap) * RampRun, RampMin, RampMax);
+
+        // Only the road joined to the touching pixels, within the ramp; other roads nearby are left alone.
+        var joined = new bool[w * d];
+        var queue = new Queue<int>(touching);
+        foreach (var i in touching) joined[i] = true;
+        while (queue.Count > 0)
+        {
+            int i = queue.Dequeue(), x = i % w, z = i / w;
+            for (int nz = Math.Max(0, z - 1); nz <= Math.Min(d - 1, z + 1); nz++)
+                for (int nx = Math.Max(0, x - 1); nx <= Math.Min(w - 1, x + 1); nx++)
+                {
+                    int n = nz * w + nx;
+                    if (joined[n] || distance[n] >= ramp || !IsRoad(n)) continue;
+                    joined[n] = true;
+                    queue.Enqueue(n);
+                }
+        }
+
+        var heights = new double[w * d];
+        var delta = new double[w * d];
+        for (int i = 0; i < w * d; i++)
+        {
+            heights[i] = H(i);
+            if (!joined[i]) continue;
+            float t = Math.Clamp((distance[i] - JoinTouch) / (ramp - JoinTouch), 0, 1);
+            float keep = t * t * (3 - 2 * t);
+            delta[i] = (height - heights[i]) * (1 - keep);
+        }
+        // Beside the road, the ground follows by the road's average change nearby, fading out over a few metres.
+        var (sideDelta, cover) = MaskedMeanWithCover(delta, joined, w, d, Side);
+
+        session.Touch(world.Height, work);
+        var changed = GridRect.Empty;
+        for (int i = 0; i < w * d; i++)
+        {
+            // The footprints stay as flattened, and other roads stay as they are.
+            if (distance[i] == 0 || !joined[i] && IsRoad(i)) continue;
+            double change = joined[i] ? delta[i] : sideDelta[i] * Math.Min(1, cover[i] * 2.5);
+            if (Math.Abs(change) < 1e-4) continue;
+            int gx = work.X0 + i % w, gz = work.Z0 + i / w;
+            world.Height[gx, gz] = World.MetresToHeight((float)(heights[i] + change));
+            changed = changed.Union(new GridRect(gx, gz, gx + 1, gz + 1));
+        }
+        return changed;
+    }
+
     /// <summary>The mean of <paramref name="values"/> over the masked cells in a box of radius <paramref name="r"/>; unmasked cells keep their value.</summary>
     private static double[] MaskedMean(double[] values, bool[] mask, int w, int d, int r)
     {

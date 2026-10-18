@@ -24,3 +24,5 @@ jobs:
         with:
           files: out/releases/*
           generate_release_notes: true
+          # Tags like v1.1.0-beta are pre-releases, so the last full release stays "Latest".
+          prerelease: ${{ contains(github.ref_name, '-') }}

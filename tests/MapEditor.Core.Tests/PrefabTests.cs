@@ -334,4 +334,49 @@ public sealed class PrefabTests : IDisposable
         PrefabPlacer.Replace(world, library, s, library.Find("shop")!, flatten: false, new EditSession("Replace"));
         Assert.Equal(["shop"], world.Prefabs.Select(p => p.Name));
     }
+
+    [Fact]
+    public void Poi_snaps_to_the_edges_of_a_street_tile()
+    {
+        var world = Flat();
+        var house = Poi("house", 20, 30);
+        var tile = Tile();
+        var library = PrefabLibrary.Of([house, tile]);
+        world.Prefabs.Add(new PrefabInstance { Name = tile.Name, Position = new Int3(0, 40, 0) });
+
+        // 3 m east of the tile and 2 m north of its south edge: against its east side, lined up with its south edge.
+        var spot = PrefabPlacer.SnapToTiles(world, library, house, new PrefabSpot(153, 40, 2, 0), 4);
+        Assert.Equal((150, 0), (spot.X, spot.Z));
+
+        // Inside the tile, 3 m from its west side: flush with that side.
+        spot = PrefabPlacer.SnapToTiles(world, library, house, new PrefabSpot(3, 40, 100, 0), 4);
+        Assert.Equal((0, 100), (spot.X, spot.Z));
+
+        // Out of reach: left where it is.
+        Assert.Equal(new PrefabSpot(160, 40, 2, 0), PrefabPlacer.SnapToTiles(world, library, house, new PrefabSpot(160, 40, 2, 0), 4));
+    }
+
+    [Fact]
+    public void Poi_does_not_snap_to_other_pois()
+    {
+        var world = Flat();
+        var house = Poi("house", 20, 30);
+        var library = PrefabLibrary.Of([house]);
+        world.Prefabs.Add(new PrefabInstance { Name = "house", Position = new Int3(0, 40, 0) });
+        var spot = new PrefabSpot(23, 40, 2, 0);
+        Assert.Equal(spot, PrefabPlacer.SnapToTiles(world, library, house, spot, 4));
+    }
+
+    [Fact]
+    public void A_poi_covering_another_ones_centre_replaces_it()
+    {
+        var world = Flat();
+        var house = Poi("house", 20, 30);
+        var library = PrefabLibrary.Of([house]);
+        var old = new PrefabInstance { Name = "house", Position = new Int3(0, 40, 0) };
+        world.Prefabs.Add(old);
+
+        Assert.Equal([old], PrefabPlacer.Covered(world, library, house, new PrefabSpot(5, 40, 5, 0)));
+        Assert.Empty(PrefabPlacer.Covered(world, library, house, new PrefabSpot(15, 40, 0, 0)));
+    }
 }

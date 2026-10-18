@@ -152,6 +152,73 @@ public static class PrefabPlacer
         return new PrefabSpot(wx, PrefabY(info, MedianGround(world, Footprint(world, info, wx, wz, rotation))), wz, rotation);
     }
 
+    /// <summary>Placed prefabs that are street tiles (<paramref name="tiles"/>) or POIs (not tiles or parts), with their footprints.</summary>
+    private static IEnumerable<(PrefabInstance Prefab, GridRect Cells)> PlacedAround(World world, PrefabLibrary library, bool tiles,
+        IReadOnlyCollection<PrefabInstance>? ignore)
+    {
+        foreach (var p in world.Prefabs)
+        {
+            if (ignore?.Contains(p) == true || library.Find(p.Name) is not { IsPart: false } other || other.IsStreetTile != tiles) continue;
+            yield return (p, Footprint(world, p, library));
+        }
+    }
+
+    /// <summary>
+    /// Moves a POI's spot up to <paramref name="snap"/> metres each way so its edges meet the edges of street tiles
+    /// nearby: against a tile's side from outside, flush with its side from inside, or lined up with the side of a
+    /// tile beside it. Each axis snaps to the nearest such edge on its own, and the height is taken again for the new
+    /// ground. Street tiles and parts don't snap.
+    /// </summary>
+    public static PrefabSpot SnapToTiles(World world, PrefabLibrary library, PrefabInfo info, PrefabSpot spot, int snap,
+        IReadOnlyCollection<PrefabInstance>? ignore = null)
+    {
+        if (info.IsStreetTile || info.IsPart || snap <= 0) return spot;
+        var r = Footprint(world, info, spot.X, spot.Z, spot.Rotation);
+        int? bestX = null, bestZ = null;
+        void Try(ref int? best, int delta)
+        {
+            if (Math.Abs(delta) <= snap && (best is null || Math.Abs(delta) < Math.Abs(best.Value))) best = delta;
+        }
+        foreach (var (_, o) in PlacedAround(world, library, tiles: true, ignore))
+        {
+            // How far apart the two are across each axis (0 or less when their ranges overlap).
+            int gapX = Math.Max(o.X0 - r.X1, r.X0 - o.X1), gapZ = Math.Max(o.Z0 - r.Z1, r.Z0 - o.Z1);
+            if (gapZ <= snap)
+            {
+                // Level with the tile north to south: against its east or west side, outside or in. Off its north or
+                // south end, line up with its sides instead.
+                if (gapZ < 0) { Try(ref bestX, o.X1 - r.X0); Try(ref bestX, o.X0 - r.X1); }
+                Try(ref bestX, o.X0 - r.X0);
+                Try(ref bestX, o.X1 - r.X1);
+            }
+            if (gapX <= snap)
+            {
+                if (gapX < 0) { Try(ref bestZ, o.Z1 - r.Z0); Try(ref bestZ, o.Z0 - r.Z1); }
+                Try(ref bestZ, o.Z0 - r.Z0);
+                Try(ref bestZ, o.Z1 - r.Z1);
+            }
+        }
+        if (bestX is null && bestZ is null) return spot;
+        int x = spot.X + (bestX ?? 0), z = spot.Z + (bestZ ?? 0);
+        return new PrefabSpot(x, PrefabY(info, MedianGround(world, Footprint(world, info, x, z, spot.Rotation))), z, spot.Rotation);
+    }
+
+    /// <summary>
+    /// The POIs a POI at <paramref name="spot"/> covers (their centre lies inside its footprint), which placing or
+    /// dropping it there replaces. Empty for street tiles and parts.
+    /// </summary>
+    public static List<PrefabInstance> Covered(World world, PrefabLibrary library, PrefabInfo info, PrefabSpot spot,
+        IReadOnlyCollection<PrefabInstance>? ignore = null)
+    {
+        if (info.IsStreetTile || info.IsPart) return [];
+        var r = Footprint(world, info, spot.X, spot.Z, spot.Rotation);
+        return PlacedAround(world, library, tiles: false, ignore)
+            .Where(o => o.Cells.X0 + o.Cells.X1 >= 2 * r.X0 && o.Cells.X0 + o.Cells.X1 < 2 * r.X1
+                        && o.Cells.Z0 + o.Cells.Z1 >= 2 * r.Z0 && o.Cells.Z0 + o.Cells.Z1 < 2 * r.Z1)
+            .Select(o => o.Prefab)
+            .ToList();
+    }
+
     /// <summary>The ground height of a street tile sharing an edge with this one, so streets meet level.</summary>
     private static int? NeighbourTileGround(World world, PrefabLibrary library, PrefabInfo info, int x, int z, int rotation,
         IReadOnlyCollection<PrefabInstance>? ignore)
@@ -338,11 +405,16 @@ public static class PrefabPlacer
         if (flatten && !snappedToLot && !info.IsPart) FlattenUnder(world, info, after, spot, session);
     }
 
-    /// <summary>Flattens a placed prefab's footprint, then evens out any road its blend reshaped.</summary>
+    /// <summary>
+    /// Flattens a placed prefab's footprint, evens out any road its blend reshaped, then ramps roads that run up to it
+    /// onto its ground, so they meet without a step.
+    /// </summary>
     private static void FlattenUnder(World world, PrefabInfo info, GridRect cells, PrefabSpot spot, EditSession session)
     {
-        var area = Flatten(world, cells, GroundUnder(info, spot.Y), info.IsStreetTile ? StreetTileBlend : PoiBlend, session);
+        int ground = GroundUnder(info, spot.Y);
+        var area = Flatten(world, cells, ground, info.IsStreetTile ? StreetTileBlend : PoiBlend, session);
         RoadOp.Resmooth(world, area, [cells], session);
+        RoadOp.RampToFootprints(world, [cells], ground, session);
     }
 
     /// <summary>Removes a prefab and everything on it (<see cref="Contents"/>). Returns how many were removed.</summary>

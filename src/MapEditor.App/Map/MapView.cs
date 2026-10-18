@@ -157,12 +157,34 @@ public sealed class MapView : FrameworkElement
     private RoadPreview? _roadPreview;
 
     /// <summary>The road being drawn, shown with a rubber band to the mouse.</summary>
+    /// <summary>
+    /// With no tool active (the Select tool), whether a left press at a map point grabs something there: if so it goes
+    /// to the tool as a drag, else the map pans.
+    /// </summary>
+    public Func<Point, bool>? GrabTest { get; set; }
+
+    /// <summary>True while a right drag (or a left drag on empty ground with the Select tool) is panning the map.</summary>
+    public bool IsPanning => _dragStart is not null;
+
     public RoadPreview? RoadPreview
     {
         get => _roadPreview;
         set
         {
             _roadPreview = value;
+            InvalidateVisual();
+        }
+    }
+
+    private Func<Point, RoadSnap?>? _roadSnapper;
+
+    /// <summary>Snaps the mouse for the road tool: the rubber band runs to the snapped point, and road ends get a ring.</summary>
+    public Func<Point, RoadSnap?>? RoadSnapper
+    {
+        get => _roadSnapper;
+        set
+        {
+            _roadSnapper = value;
             InvalidateVisual();
         }
     }
@@ -380,7 +402,7 @@ public sealed class MapView : FrameworkElement
             e.Handled = true;
             return;
         }
-        if (e.ChangedButton == MouseButton.Left && ToolActive && _renderer is not null)
+        if (e.ChangedButton == MouseButton.Left && _renderer is not null && (ToolActive || GrabTest?.Invoke(ScreenToMap(e.GetPosition(this))) == true))
         {
             _toolDrag = true;
             CaptureMouse();
@@ -431,7 +453,7 @@ public sealed class MapView : FrameworkElement
         var map = ScreenToMap(p);
         if (_toolDrag) ToolInput?.Invoke(this, new ToolInputEventArgs(ToolPhase.Move, map, Keyboard.Modifiers));
         _mouseMap = map;
-        if (_brushCursor is not null || _roadPreview is not null || _prefabGhost is not null) InvalidateVisual();
+        if (_brushCursor is not null || _roadPreview is not null || _roadSnapper is not null || _prefabGhost is not null) InvalidateVisual();
         CursorMoved?.Invoke(this, map);
     }
 
@@ -536,9 +558,14 @@ public sealed class MapView : FrameworkElement
 
     private void DrawRoadPreview(DrawingContext dc)
     {
-        if (_roadPreview is not { MapPoints.Count: > 0 } road) return;
+        var snap = _mouseMap is { } mouse && _roadSnapper is { } snapper ? snapper(mouse) : null;
+        if (_roadPreview is not { MapPoints.Count: > 0 } road)
+        {
+            if (snap is { OnEnd: true }) DrawRoadEndMark(dc, MapToScreen(snap.MapPoint));
+            return;
+        }
         var points = road.MapPoints.Select(MapToScreen).ToList();
-        if (_mouseMap is { } m) points.Add(MapToScreen(m));
+        if (_mouseMap is { } m) points.Add(MapToScreen(snap?.MapPoint ?? m));
 
         var geometry = new StreamGeometry();
         using (var g = geometry.Open())
@@ -555,6 +582,15 @@ public sealed class MapView : FrameworkElement
         dc.DrawGeometry(null, CursorPen, geometry);
         foreach (var p in points.Take(road.MapPoints.Count))
             dc.DrawEllipse(Brushes.White, CursorShadowPen, p, 3, 3);
+        if (snap is { OnEnd: true }) DrawRoadEndMark(dc, points[^1]);
+    }
+
+    /// <summary>A ring on the road end the next click would snap to.</summary>
+    private static void DrawRoadEndMark(DrawingContext dc, Point at)
+    {
+        dc.DrawEllipse(null, CursorShadowPen, at, 8, 8);
+        dc.DrawEllipse(null, CursorPen, at, 8, 8);
+        dc.DrawEllipse(Brushes.White, CursorShadowPen, at, 3, 3);
     }
 
     private static readonly uint TownPoiColour = OverlayRaster.Premultiply(Color.FromArgb(255, 255, 200, 90));
@@ -609,6 +645,9 @@ public sealed class MapView : FrameworkElement
         foreach (var road in town.Roads)
             for (int i = 1; i < road.Count; i++)
                 dc.DrawLine(TownRoadPen, MapToScreen(road[i - 1]), MapToScreen(road[i]));
+        foreach (var road in town.OffRoads)
+            for (int i = 1; i < road.Count; i++)
+                dc.DrawLine(TownRoadOffPen, MapToScreen(road[i - 1]), MapToScreen(road[i]));
         // While dragging: the cells the town will take, and the rectangle under the mouse (red if too small).
         foreach (var c in town.Cells) dc.DrawRectangle(TownCellFill, TownCellPen, Screen(c));
         if (town.Drag is { } drag)
@@ -626,10 +665,22 @@ public sealed class MapView : FrameworkElement
         }
         if (town.Selection.Width > 0 && town.Selection.Height > 0)
         {
-            dc.DrawRectangle(null, CursorShadowPen, Screen(town.Selection));
-            dc.DrawRectangle(null, TownSelectionPen, Screen(town.Selection));
+            var box = Screen(town.Selection);
+            dc.DrawRectangle(null, CursorShadowPen, box);
+            dc.DrawRectangle(null, TownSelectionPen, box);
+            // Grab handles on the corners and the middle of each edge.
+            if (town.Handles)
+                foreach (var x in new[] { box.Left, box.Left + box.Width / 2, box.Right })
+                    foreach (var y in new[] { box.Top, box.Top + box.Height / 2, box.Bottom })
+                        if (x != box.Left + box.Width / 2 || y != box.Top + box.Height / 2)
+                            dc.DrawRectangle(Brushes.White, CursorShadowPen, new Rect(x - 3.5, y - 3.5, 7, 7));
         }
     }
+
+    private static readonly Pen TownRoadOffPen = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(220, 255, 110, 90)), 2)
+    {
+        DashStyle = DashStyles.Dash,
+    });
 
     private static readonly Brush TownCellFill = Frozen(new SolidColorBrush(Color.FromArgb(45, 255, 255, 255)));
     private static readonly Pen TownCellPen = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(200, 255, 255, 255)), 1));
@@ -662,6 +713,12 @@ public sealed class MapView : FrameworkElement
         {
             var square = new Rect(centre.X - half, centre.Y - half, half * 2, half * 2);
             dc.PushTransform(new RotateTransform(brush.RotationDegrees, centre.X, centre.Y));
+            if (brush.Picture is { } picture)
+            {
+                dc.PushOpacity(StampPictureOpacity);
+                dc.DrawImage(picture, square);
+                dc.Pop();
+            }
             dc.DrawRectangle(null, CursorShadowPen, square);
             dc.DrawRectangle(null, CursorPen, square);
             dc.DrawLine(CursorPen, centre, new Point(centre.X, centre.Y - half)); // marks the stamp's "up"
@@ -828,6 +885,8 @@ public sealed class MapView : FrameworkElement
     private void DrawPrefabGhost(DrawingContext dc)
     {
         if (_prefabGhost is not { } ghost) return;
+        foreach (var r in ghost.Replaces)
+            dc.DrawRectangle(GhostReplaceFill, GhostReplacePen, new Rect(MapToScreen(r.TopLeft), MapToScreen(r.BottomRight)));
         if (ghost.Lot is { } lot)
             dc.DrawRectangle(null, ghost.LotFits ? LotPen : GhostWarnPen, new Rect(MapToScreen(lot.TopLeft), MapToScreen(lot.BottomRight)));
         var screen = new Rect(MapToScreen(ghost.MapRect.TopLeft), MapToScreen(ghost.MapRect.BottomRight));
@@ -869,6 +928,12 @@ public sealed class MapView : FrameworkElement
     }
 
     private const double GhostPictureOpacity = 0.75;
+
+    /// <summary>The stamp picture is fainter than a prefab's, so the ground it lands on still shows.</summary>
+    private const double StampPictureOpacity = 0.6;
+
+    private static readonly Brush GhostReplaceFill = Frozen(new SolidColorBrush(Color.FromArgb(90, 255, 70, 60)));
+    private static readonly Pen GhostReplacePen = Frozen(new Pen(new SolidColorBrush(Color.FromRgb(255, 80, 70)), 2));
 
     /// <summary>On-screen size (device pixels, shorter side) at which a prefab is drawn from above.</summary>
     private const double DetailMinPixels = 40;

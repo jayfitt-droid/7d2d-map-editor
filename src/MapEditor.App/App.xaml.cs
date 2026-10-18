@@ -34,7 +34,7 @@ public partial class App : Application
         // A failing render repeats every frame; tell the user once rather than flooding them with dialogs.
         if (_reportedError) return;
         _reportedError = true;
-        MessageBox.Show(MainWindow, $"Something went wrong:\n\n{e.Exception.Message}\n\nDetails were written to {CrashLogPath}.",
+        ThemedMessageBox.Show(MainWindow, $"Something went wrong:\n\n{e.Exception.Message}\n\nDetails were written to {CrashLogPath}.",
             "7D2D Map Editor", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 }

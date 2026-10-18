@@ -33,19 +33,32 @@ The usual workflow:
 3. **Save** (Ctrl+S) your work as a `.7dmap` project. A project keeps everything and saves in about a second. The editor also autosaves every 5 minutes and offers to recover if it didn't close normally.
 4. **Export** (Ctrl+E) checks the world, then writes a world folder. Export to the game's `GeneratedWorlds` folder and the world shows up under New Game.
 
+The **Select** tool (V) picks up POIs, traders, street tiles and spawn points: click one to select it and see its details, drag it to move it, Q/E to turn it, PgUp/PgDn to raise or lower it, Del to remove it. Dragging empty ground pans the map. The Prefabs and Spawn tools can still select things too.
+
+**Roads** snap as you draw. Click near the end of any road to carry it on: the new road starts there with the same surface and width, and its first segment snaps to the old road's heading. A segment within 5° of north, south, east or west snaps straight. Hold Alt to draw freely. The **Preset** list in the road options sets common sizes: Highway (18 m) and Country road (9 m gravel) match RWG's roads.
+
+**Towns** can be adjusted before you build them. Drag the box's edges or corners to resize it in 150 m tiles, and click a green link road to turn it off (click the dashed line to bring it back).
+
+**POIs** and traders snap to the edges of street tiles: against a tile's side, flush with it from inside, or lined up with its sides. Drag a POI over another until the ghost covers its middle and that POI turns red: dropping there replaces it.
+
+A road you drew first ramps up or down to meet a POI, trader or town built against it, so there is no step where they join.
+
+The **Trader** tool (A) places a trader: pick one in the options or press **Random**.
+
 A world opened from a folder saves straight back to that folder with Ctrl+S, as before. Saved games keep the chunks they've already generated, so start a **new game** to see your changes everywhere.
 
 ### Keyboard shortcuts
 
 | Key | Action |
 |---|---|
-| P, R, L, F, S, N, T | Pan, Raise, Lower, Flatten, Smooth, Roughen, Stamp |
+| V, R, L, F, S, N, T | Select, Raise, Lower, Flatten, Smooth, Roughen, Stamp |
 | B, D, W | Paint biome, Paint radiation, Water fill |
-| O, I, G, H | Road, Prefabs, Town, Spawn points |
+| O, I, A, G, H | Road, Prefabs, Trader, Town, Spawn points |
 | [ and ] | Smaller or larger brush |
 | Q and E | Turn (square brush, stamp, prefab, spawn) |
 | Ctrl+click | Sample height (Flatten) or water level (Water) |
 | Shift+drag | Erase roads or radiation |
+| Alt+click | Place a road point, POI or trader without snapping |
 | Enter, Esc, Backspace | Finish, cancel, or undo a point (roads, towns) |
 | Del, PgUp, PgDn | Delete the selected prefab, or raise or lower it one block |
 | Wheel, + and -, Home | Zoom, fit to window |
