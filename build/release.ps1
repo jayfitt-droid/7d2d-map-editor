@@ -7,8 +7,8 @@
     ./build/release.ps1 -Version 1.0.1
 
     Output goes to out/releases: 7D2DMapEditor-win-Setup.exe, 7D2DMapEditor-win-Portable.zip, the .nupkg update
-    packages and releases.win.json. Upload all of them to a GitHub release (or any static folder) to publish, and
-    point Updates.BuiltInFeed at that place so installed copies find later versions.
+    packages and releases.win.json. Upload all of them to a GitHub release to publish (a v* tag does this on GitHub
+    Actions); installed copies find later versions through the repository's releases (Updates.Repository).
 #>
 param(
     [string]$Version

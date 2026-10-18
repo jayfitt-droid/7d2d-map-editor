@@ -89,7 +89,7 @@ This needs the .NET 10 SDK (pinned in `global.json`). Set `MAPEDITOR_TEST_WORLD`
 ./build/release.ps1 -Version 1.0.0
 ```
 
-The script runs the tests, publishes a self-contained win-x64 build, and packs it with [Velopack](https://velopack.io) into `out/releases`. Pushing a `v*` tag does the same on GitHub Actions and attaches the files to a GitHub release. To turn on update checks for installed copies, set `Updates.BuiltInFeed` (in `src/MapEditor.App/Updates.cs`) to the releases URL.
+The script runs the tests, publishes a self-contained win-x64 build, and packs it with [Velopack](https://velopack.io) into `out/releases`. Pushing a `v*` tag does the same on GitHub Actions and attaches the files to a GitHub release. Installed copies check this repository's GitHub releases from **Help > Check for Updates** (`src/MapEditor.App/Updates.cs`). A pre-release build (a tag such as `v1.1.0-beta`) also finds later pre-releases; a full release only finds full releases.
 
 ## How it works
 

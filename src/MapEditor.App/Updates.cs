@@ -1,27 +1,43 @@
 using System.Net.Http;
 using Velopack;
+using Velopack.Sources;
 
 namespace MapEditor.App;
 
 /// <summary>
-/// Update checks through Velopack. They only run for an installed copy (not a build run from source) and only
-/// when an update feed is set: <see cref="AppSettings.UpdateUrl"/>, or the feed baked in at release time.
+/// Update checks through Velopack. They only run for an installed copy (not a build run from source). Updates come
+/// from this project's GitHub releases, unless <see cref="AppSettings.UpdateUrl"/> points at another feed (a URL or
+/// folder of Velopack releases). A pre-release build (a version such as 1.1.0-beta) also takes later pre-releases;
+/// a full release only takes full releases.
 /// </summary>
 public static class Updates
 {
-    /// <summary>The release feed (a GitHub releases page or a folder of Velopack releases), set by the release build.</summary>
-    public const string? BuiltInFeed = null;
+    /// <summary>The GitHub repository whose releases are the update feed.</summary>
+    public const string Repository = "https://github.com/jayfitt-droid/7d2d-map-editor";
 
-    public static string? Feed(AppSettings settings) =>
-        string.IsNullOrWhiteSpace(settings.UpdateUrl) ? BuiltInFeed : settings.UpdateUrl;
+    /// <summary>True for a pre-release build: its version, set by the release build, has a suffix such as -beta.</summary>
+    public static bool IsPrerelease
+    {
+        get
+        {
+            string? version = typeof(Updates).Assembly
+                .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion;
+            // Anything after '+' is build metadata (the commit), not part of the version.
+            return version?.Split('+')[0].Contains('-') == true;
+        }
+    }
+
+    private static UpdateManager Manager(AppSettings settings) =>
+        string.IsNullOrWhiteSpace(settings.UpdateUrl)
+            ? new UpdateManager(new GithubSource(Repository, null, IsPrerelease))
+            : new UpdateManager(settings.UpdateUrl);
 
     public sealed record Result(string Message, UpdateManager? Manager = null, UpdateInfo? Update = null);
 
     public static async Task<Result> CheckAsync(AppSettings settings)
     {
-        if (Feed(settings) is not { } feed)
-            return new("No update feed is set. Download new versions from the release page.");
-        var manager = new UpdateManager(feed);
+        var manager = Manager(settings);
         if (!manager.IsInstalled)
             return new("Updates only work for the installed editor, not a copy run from a build folder.");
         try

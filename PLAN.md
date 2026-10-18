@@ -80,6 +80,7 @@ tests/MapEditor.Core.Tests/
    - **Select tool replaces Pan** (the user's request): click a POI, trader, street tile or spawn point to select it (parts aren't picked); drag to move, Q/E, PgUp/PgDn, Del as before. A drag on empty ground pans, as Pan did. Shortcut V. The Prefabs and Spawn tools keep their own selecting (the user's choice). New worlds start on Select.
    - **Stamp preview:** the Stamp tool's cursor shows the stamp from above (`StampPicture`: shaded heights, see-through where its alpha fades, blue for its water), turned and sized as it will be stamped.
    - **Themed message boxes:** every message box is now `ThemedMessageBox` (same arguments as `MessageBox.Show`), in the Fluent theme. Open, save and folder pickers stay the Windows ones, which follow the Windows theme.
+   - **Updates on:** the repo went public on 2026-10-18, so `Updates.cs` now uses Velopack's `GithubSource` for this repo. Builds with a pre-release version (e.g. 1.1.0-beta) also take later pre-releases. Copies of 1.0.0 and 1.1.0-beta have no feed, so the first release with this is the first that updates itself.
    - Done when each works in the editor and in a new game. Then ship as v1.1.0.
    - **Status (2026-10-18):** all six built, with tests for finding road ends (`RoadEndTests`) and for POI snapping and covering (`PrefabTests`). Not yet checked by the user. The Trader tool's shortcut is A; Alt+click places without snapping.
 
