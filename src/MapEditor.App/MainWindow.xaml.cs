@@ -45,6 +45,13 @@ public partial class MainWindow : Window
     private string? _projectPath; // .7dmap the world was opened from or saved to; Ctrl+S prefers it
     private ProjectStore.ProjectSettings _projectSettings = new();
     private bool _dirty;
+    /// <summary>
+    /// Counts edits. A save notes it before writing and clears <see cref="_dirty"/> only if nothing was edited while it
+    /// ran, so a later edit is never marked as saved.
+    /// </summary>
+    private long _revision;
+    /// <summary>The window was asked to close while a save was running; it closes once the save is done.</summary>
+    private bool _closeWhenIdle;
     private readonly System.Windows.Threading.DispatcherTimer _autosaveTimer = new() { Interval = TimeSpan.FromMinutes(5) };
     private bool _autosaving;
 
@@ -354,7 +361,19 @@ public partial class MainWindow : Window
 
     // ---- save --------------------------------------------------------------
 
-    private void HasWorld_CanExecute(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = _world is not null && !_vm.IsBusy;
+    private void HasWorld_CanExecute(object sender, CanExecuteRoutedEventArgs e) =>
+        e.CanExecute = _world is not null && !_vm.IsBusy && !_tools.IsStroking && !_prefabTools.IsDragging && !_townTools.IsDragging;
+
+    /// <summary>
+    /// True (and says so) while a save, export or load is running. Saves write the live world on another thread,
+    /// so nothing may edit it until they finish.
+    /// </summary>
+    private bool RefuseWhileBusy()
+    {
+        if (!_vm.IsBusy) return false;
+        _vm.Status = "Wait for the current save or load to finish.";
+        return true;
+    }
 
     private async void Save_Executed(object sender, ExecutedRoutedEventArgs e) => await SaveAsync(saveAs: false);
 
@@ -414,10 +433,11 @@ public partial class MainWindow : Window
             var sw = Stopwatch.StartNew();
             world.Name = Path.GetFileNameWithoutExtension(path);
             var settings = _projectSettings;
+            long revision = _revision;
             await Task.Run(() => ProjectStore.Save(world, path, settings));
             _projectPath = path;
-            _dirty = false;
-            DeleteAutosave();
+            _dirty = _revision != revision;
+            if (!_dirty) DeleteAutosave();
             _settings.LastWorldFolder = path;
             _settings.AddRecent(path);
             _settings.Save();
@@ -452,6 +472,7 @@ public partial class MainWindow : Window
             // Remember the export in the project, so Export offers the same place next time.
             _projectSettings.ExportFolder = dialog.Folder;
             _dirty = true;
+            _revision++;
             UpdateTitle();
         }
         return ok;
@@ -487,6 +508,7 @@ public partial class MainWindow : Window
             string projectName = world.Name;
             world.Name = Path.GetFileName(folder);
             var options = new WorldWriteOptions { Overwrite = true, LevelTemplate = template, NewLevelGuid = newGuid };
+            long revision = _revision;
             await Task.Run(() => WorldWriter.Write(world, folder, options));
             if (_projectPath is not null) world.Name = projectName;
             _savePath = folder;
@@ -494,8 +516,8 @@ public partial class MainWindow : Window
             {
                 // A world edited as a folder is now saved there.
                 _sourcePath ??= folder;
-                _dirty = false;
-                DeleteAutosave();
+                _dirty = _revision != revision;
+                if (!_dirty) DeleteAutosave();
             }
             _settings.LastWorldFolder = folder;
             _settings.Save();
@@ -612,6 +634,7 @@ public partial class MainWindow : Window
         finally
         {
             _autosaving = false;
+            CloseIfWaiting();
         }
     }
 
@@ -708,8 +731,26 @@ public partial class MainWindow : Window
 
     private bool _closeConfirmed;
 
+    /// <summary>Closes the window if it was asked to close while a save was running and nothing is running now.</summary>
+    private void CloseIfWaiting()
+    {
+        if (_closeWhenIdle && !_vm.IsBusy && !_autosaving)
+        {
+            _closeWhenIdle = false;
+            _ = Dispatcher.BeginInvoke(Close);
+        }
+    }
+
     private async void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
+        // Closing would cut a running save off half-written; wait for it, then close.
+        if (_vm.IsBusy || _autosaving)
+        {
+            e.Cancel = true;
+            _closeWhenIdle = true;
+            _vm.Status = "Closing once the save finishes...";
+            return;
+        }
         if (_closeConfirmed || _world is null || !_dirty)
         {
             DeleteAutosave();
@@ -734,7 +775,7 @@ public partial class MainWindow : Window
 
     private void ImportHeightmap_Click(object sender, RoutedEventArgs e)
     {
-        if (_world is not { } world) return;
+        if (_world is not { } world || RefuseWhileBusy()) return;
         var dialog = new OpenFileDialog { Title = "Import heightmap", Filter = "Heightmaps (*.png;*.raw)|*.png;*.raw" };
         if (dialog.ShowDialog(this) != true) return;
         try
@@ -805,6 +846,7 @@ public partial class MainWindow : Window
     private void OnWorldEdited()
     {
         _dirty = true;
+        _revision++;
         UpdateTitle();
         if (Map.Renderer is { } renderer) Overview.SetRenderer(renderer, _vm.Layers);
     }
@@ -922,6 +964,7 @@ public partial class MainWindow : Window
             case nameof(MainViewModel.IsBusy):
                 // Commands that check IsBusy are not re-queried by WPF on their own.
                 CommandManager.InvalidateRequerySuggested();
+                CloseIfWaiting();
                 break;
             case nameof(MainViewModel.Layers) when Map.Renderer is { } renderer:
                 Overview.SetRenderer(renderer, _vm.Layers);
@@ -987,6 +1030,11 @@ public partial class MainWindow : Window
         if (AltTurnsOffSnapping(e)) return;
         // Leave typing in text boxes alone.
         if (e.Handled || Keyboard.FocusedElement is TextBox || Keyboard.Modifiers != ModifierKeys.None) return;
+        if (e.Key != Key.F1 && RefuseWhileBusy())
+        {
+            e.Handled = true;
+            return;
+        }
 
         if (_vm.IsTownTool && e.Key == Key.Escape && _townTools.Cancel()) { e.Handled = true; return; }
         if (_vm.IsTownTool && e.Key == Key.Enter && _townTools.Accept()) { e.Handled = true; return; }
@@ -1147,6 +1195,7 @@ public partial class MainWindow : Window
     /// <summary>Card buttons act on the map selection even while a prefab is picked for placing.</summary>
     private void WithMapFocus(Action action)
     {
+        if (RefuseWhileBusy()) return;
         action();
         Map.Focus();
     }

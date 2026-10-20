@@ -31,4 +31,25 @@ public static class WorldFiles
 
     public static bool IsDerived(string fileName) =>
         Derived.Contains(fileName) || fileName.EndsWith(".bak", StringComparison.OrdinalIgnoreCase);
+
+    private static readonly HashSet<string> DeviceNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    };
+
+    /// <summary>
+    /// Whether <paramref name="name"/> can be written as an extra file inside a world folder: a plain file name (no
+    /// folders, drive or parent references, no Windows device name) that isn't a file the editor writes itself.
+    /// Names come from project files, which may have been made by someone else.
+    /// </summary>
+    public static bool IsSafeExtraName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 200) return false;
+        if (name != Path.GetFileName(name) || Path.IsPathRooted(name)) return false;
+        if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name.Contains(':')) return false;
+        if (name is "." or ".." || name.EndsWith('.') || name.EndsWith(' ')) return false;
+        if (DeviceNames.Contains(Path.GetFileNameWithoutExtension(name))) return false;
+        return !Modelled.Contains(name) && !IsDerived(name);
+    }
 }

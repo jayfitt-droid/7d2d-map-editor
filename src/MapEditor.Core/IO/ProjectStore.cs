@@ -27,6 +27,15 @@ public static class ProjectStore
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
+    /// <summary>Largest world a project may hold, in metres: the game's own limit.</summary>
+    public const int MaxWorldSize = 16384;
+
+    /// <summary>Most bytes one extra file, and all of them together, may hold when a project is loaded.</summary>
+    public const long MaxExtraFileBytes = 256L << 20, MaxExtraBytes = 1L << 30;
+
+    /// <summary>Largest project.json read, in bytes.</summary>
+    private const long MaxManifestBytes = 256L << 20;
+
     /// <summary>Editor state stored beside the world.</summary>
     public sealed class ProjectSettings
     {
@@ -84,15 +93,9 @@ public static class ProjectStore
             Settings = settings ?? new ProjectSettings(),
         };
 
-        // A passthrough image is only used while its layer is unedited (see WorldWriter), so an edited layer's
+        // A passthrough image is only used while its layer still matches it (see WorldWriter), so an edited layer's
         // original is dropped rather than carried along.
-        var passthrough = world.PassthroughImages.Where(kv => kv.Key switch
-        {
-            WorldFiles.Roads => world.Roads is not { Version: > 0 },
-            WorldFiles.Water => world.Water is not { Version: > 0 },
-            WorldFiles.Biomes => world.Biomes is null,
-            _ => true,
-        }).ToList();
+        var passthrough = world.PassthroughImages.Where(kv => Passthrough.Applies(world, kv.Key)).ToList();
         manifest.Passthrough = passthrough.Select(kv => new PassthroughDto(kv.Key, kv.Value.Width, kv.Value.Height)).ToList();
 
         string full = Path.GetFullPath(path);
@@ -120,12 +123,13 @@ public static class ProjectStore
     {
         using var zip = ZipFile.OpenRead(path);
         var manifestEntry = zip.GetEntry(ManifestEntry) ?? throw new InvalidDataException("The file is not a map editor project (no project.json).");
+        if (manifestEntry.Length > MaxManifestBytes) throw new InvalidDataException("project.json is too large.");
         Manifest manifest;
         using (var s = manifestEntry.Open())
             manifest = JsonSerializer.Deserialize<Manifest>(s, Json) ?? throw new InvalidDataException("project.json is empty.");
         if (manifest.Format > FormatVersion)
             throw new InvalidDataException($"The project was saved by a newer version of the editor (format {manifest.Format}).");
-        if (manifest.Size <= 0) throw new InvalidDataException("project.json has no world size.");
+        CheckManifest(manifest);
 
         int size = manifest.Size;
         var world = new World
@@ -136,24 +140,37 @@ public static class ProjectStore
             MapInfo = XDocument.Parse(manifest.MapInfo),
         };
         if (manifest.Biomes is { } bs && ReadGrid<byte>(zip, BiomesEntry, bs.Width, bs.Height) is { } biomes)
-            world.Biomes = new IndexedLayer(biomes, manifest.BiomePalette ?? []);
+        {
+            var palette = manifest.BiomePalette ?? [];
+            foreach (byte index in biomes.Data)
+                if (index >= palette.Count) throw new InvalidDataException("The biome layer uses a colour its palette doesn't have.");
+            world.Biomes = new IndexedLayer(biomes, palette);
+        }
         if (manifest.Roads) world.Roads = ReadGrid<byte>(zip, RoadsEntry, size, size);
         if (manifest.Water) world.Water = ReadGrid<byte>(zip, WaterEntry, size, size);
         if (manifest.Radiation is { } rs) world.Radiation = ReadGrid<byte>(zip, RadiationEntry, rs.Width, rs.Height);
 
-        foreach (var p in manifest.Prefabs)
+        foreach (var p in manifest.Prefabs ?? [])
         {
             var prefab = new PrefabInstance { Name = p.Name, Type = p.Type, Position = new Int3(p.X, p.Y, p.Z), Rotation = p.Rotation };
             foreach (var pair in p.Extra ?? []) if (pair.Length == 2) prefab.ExtraAttributes.Add(new(pair[0], pair[1]));
             world.Prefabs.Add(prefab);
         }
-        foreach (var s in manifest.Spawns)
+        foreach (var s in manifest.Spawns ?? [])
             world.Spawns.Add(new SpawnPoint { X = s.X, Y = s.Y, Z = s.Z, RotationY = s.RotationY });
-        foreach (var p in manifest.Passthrough)
-            if (ReadBytes(zip, PassthroughDir + p.File) is { } pixels && pixels.Length == p.Width * p.Height * 4)
+        foreach (var p in manifest.Passthrough ?? [])
+        {
+            long expected = (long)p.Width * p.Height * 4;
+            if (ReadBytes(zip, PassthroughDir + p.File, expected) is { } pixels && pixels.Length == expected)
                 world.PassthroughImages[p.File] = new RgbaImage(p.Width, p.Height, pixels);
-        foreach (var file in manifest.ExtraFiles)
-            if (ReadBytes(zip, ExtraDir + file) is { } bytes) world.ExtraFiles[file] = bytes;
+        }
+        long extraBytes = 0;
+        foreach (var file in manifest.ExtraFiles ?? [])
+        {
+            if (ReadBytes(zip, ExtraDir + file, MaxExtraFileBytes) is not { } bytes) continue;
+            if ((extraBytes += bytes.Length) > MaxExtraBytes) throw new InvalidDataException("The project's extra files are too large.");
+            world.ExtraFiles[file] = bytes;
+        }
 
         settings = manifest.Settings ?? new ProjectSettings();
         return world;
@@ -172,6 +189,32 @@ public static class ProjectStore
         entry.Write(bytes);
     }
 
+    /// <summary>
+    /// Checks everything in the manifest that decides how much is allocated or where files go, before anything is read:
+    /// a project may come from someone else.
+    /// </summary>
+    private static void CheckManifest(Manifest m)
+    {
+        if (m.Size <= 0 || m.Size > MaxWorldSize) throw new InvalidDataException($"project.json has a world size of {m.Size} m; it must be 1 to {MaxWorldSize}.");
+        void Layer(string what, Size2? size)
+        {
+            if (size is { } s && (s.Width <= 0 || s.Height <= 0 || s.Width > m.Size || s.Height > m.Size))
+                throw new InvalidDataException($"The project's {what} layer is {s.Width}×{s.Height}, which doesn't fit a {m.Size} m world.");
+        }
+        Layer("biome", m.Biomes);
+        Layer("radiation", m.Radiation);
+        if (m.BiomePalette is { Count: > 256 }) throw new InvalidDataException("The project's biome palette has more than 256 colours.");
+        foreach (var p in m.Passthrough ?? [])
+        {
+            if (p.File is not (WorldFiles.Biomes or WorldFiles.Roads or WorldFiles.Water))
+                throw new InvalidDataException($"The project keeps an original image for '{p.File}', which isn't a layer image.");
+            Layer(p.File, new Size2(p.Width, p.Height));
+        }
+        foreach (var file in m.ExtraFiles ?? [])
+            if (!WorldFiles.IsSafeExtraName(file))
+                throw new InvalidDataException($"The project lists an extra file named '{file}', which isn't a plain file name for a world folder.");
+    }
+
     private static Grid<T>? ReadGrid<T>(ZipArchive zip, string name, int width, int height) where T : unmanaged
     {
         if (zip.GetEntry(name) is not { } entry) return null;
@@ -182,12 +225,14 @@ public static class ProjectStore
         return grid;
     }
 
-    private static byte[]? ReadBytes(ZipArchive zip, string name)
+    /// <summary>Reads an entry of at most <paramref name="limit"/> bytes; a larger one is refused.</summary>
+    private static byte[]? ReadBytes(ZipArchive zip, string name, long limit)
     {
         if (zip.GetEntry(name) is not { } entry) return null;
+        if (entry.Length > limit) throw new InvalidDataException($"{name} in the project is too large.");
+        var bytes = new byte[entry.Length];
         using var s = entry.Open();
-        using var ms = new MemoryStream((int)entry.Length);
-        s.CopyTo(ms);
-        return ms.ToArray();
+        s.ReadExactly(bytes);
+        return bytes;
     }
 }

@@ -90,18 +90,12 @@ public static class Png
     public delegate void RowAction(int y, ReadOnlySpan<byte> row);
     public delegate void RowSource(int y, Span<byte> row);
 
-    public static void WriteRgba(string path, int width, int height, ReadOnlySpan<byte> rgba, CompressionLevel level = CompressionLevel.Fastest)
+    public static void WriteRgba(string path, int width, int height, byte[] rgba, CompressionLevel level = CompressionLevel.Fastest)
     {
-        if (rgba.Length != width * height * 4) throw new ArgumentException("Buffer size does not match dimensions.", nameof(rgba));
-        unsafe
-        {
-            fixed (byte* p = rgba)
-            {
-                var ptr = (IntPtr)p;
-                WriteRows(path, width, height, PngPixelFormat.Rgba8, (y, row) =>
-                    new ReadOnlySpan<byte>((byte*)ptr + (long)y * width * 4, width * 4).CopyTo(row), level);
-            }
-        }
+        if (width <= 0 || height <= 0 || rgba.LongLength != (long)width * height * 4)
+            throw new ArgumentException("Buffer size does not match dimensions.", nameof(rgba));
+        int stride = width * 4;
+        WriteRows(path, width, height, PngPixelFormat.Rgba8, (y, row) => rgba.AsSpan(y * stride, stride).CopyTo(row), level);
     }
 
     /// <summary>Encodes an image whose top-down rows are produced on demand.</summary>
@@ -282,6 +276,9 @@ public static class Png
         stream.ReadExactly(head);
         int length = BinaryPrimitives.ReadInt32BigEndian(head);
         if (length < 0) throw new InvalidDataException("Bad PNG chunk length.");
+        // A chunk can't be longer than what is left of the file, so a bad length can't make us allocate gigabytes.
+        if (stream.CanSeek && length > stream.Length - stream.Position)
+            throw new InvalidDataException("PNG chunk runs past the end of the file.");
         string type = Encoding.ASCII.GetString(head[4..]);
         var data = new byte[length];
         stream.ReadExactly(data);

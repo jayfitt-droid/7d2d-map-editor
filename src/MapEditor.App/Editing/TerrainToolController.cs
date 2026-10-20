@@ -84,6 +84,11 @@ public sealed class TerrainToolController
     {
         var tool = _vm.SelectedTool;
         if (tool == EditorTool.Select) return;
+        if (tool == EditorTool.Biome && _vm.SelectedBiome is { } biome && LayerPaint.CantPaintBiome(world, biome.Color) is { } why)
+        {
+            _vm.Status = why;
+            return;
+        }
         string label = _vm.Tools.First(t => t.Tool == tool).Label;
         if (_erase && tool == EditorTool.Radiation) label = "Erase radiation";
         if (_erase && tool == EditorTool.Water) label = "Drain water";

@@ -18,17 +18,30 @@ public static class LayerPaint
     /// </summary>
     public static GridRect PaintBiome(World world, float cx, float cz, BrushTip tip, uint rgb, EditSession session)
     {
+        if (CantPaintBiome(world, rgb) is not null) return GridRect.Empty;
         world.Biomes ??= NewBiomeLayer(world.Size);
         var layer = world.Biomes;
         int index = layer.Palette.IndexOf(rgb);
         if (index < 0)
         {
-            if (layer.Palette.Count >= 256) throw new InvalidOperationException("The biome map already uses 256 colours.");
             layer.Palette.Add(rgb);
             index = layer.Palette.Count - 1;
         }
         int scale = Math.Max(1, world.Size / layer.Indices.Width);
         return PaintTip(layer.Indices, scale, cx, cz, tip, (byte)index, session);
+    }
+
+    /// <summary>
+    /// Why biome colour <paramref name="rgb"/> can't be painted, or null if it can. A biome map with more than 255
+    /// colours is kept only as its original image: painting would replace the whole map, so it is refused.
+    /// </summary>
+    public static string? CantPaintBiome(World world, uint rgb)
+    {
+        if (world.Biomes is null && world.PassthroughImages.ContainsKey(IO.WorldFiles.Biomes))
+            return "This world's biome map has more than 255 colours, so it is kept as it was and can't be painted.";
+        if (world.Biomes is { } layer && layer.Palette.Count >= 256 && !layer.Palette.Contains(rgb))
+            return "The biome map already uses 256 colours; paint with one of the biomes already on it.";
+        return null;
     }
 
     /// <summary>Adds (or with <paramref name="erase"/>, removes) radiation under the brush tip.</summary>
