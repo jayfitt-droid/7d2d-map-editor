@@ -39,9 +39,11 @@ The **Select** tool (V) picks up POIs, traders, street tiles and spawn points: c
 
 **Towns** can be adjusted before you build them. Drag the box's edges or corners to resize it in 150 m tiles, and click a green link road to turn it off (click the dashed line to bring it back).
 
+**Street tiles** snap to the 150 m grid of a street tile nearby, so their streets line up. Away from other tiles they go where you put them. Hold Alt to place one freely beside a tile. Tiles can't overlap: drop one over another tile's middle to replace it (and what's on it), or anywhere else clear of tiles.
+
 **POIs** and traders snap to the edges of street tiles: against a tile's side, flush with it from inside, or lined up with its sides. Drag a POI over another until the ghost covers its middle and that POI turns red: dropping there replaces it.
 
-A road you drew first ramps up or down to meet a POI, trader or town built against it, so there is no step where they join.
+Placing a POI, trader or street tile never changes the roads you drew. One placed against a road takes the road's height, so they meet level; the ground around it still blends in, easing off beside roads.
 
 The **Trader** tool (A) places a trader: pick one in the options or press **Random**.
 
@@ -58,7 +60,7 @@ A world opened from a folder saves straight back to that folder with Ctrl+S, as 
 | Q and E | Turn (square brush, stamp, prefab, spawn) |
 | Ctrl+click | Sample height (Flatten) or water level (Water) |
 | Shift+drag | Erase roads or radiation |
-| Alt+click | Place a road point, POI or trader without snapping |
+| Alt+click | Place a road point, POI, trader or street tile without snapping |
 | Enter, Esc, Backspace | Finish, cancel, or undo a point (roads, towns) |
 | Del, PgUp, PgDn | Delete the selected prefab, or raise or lower it one block |
 | Wheel, + and -, Home | Zoom, fit to window |

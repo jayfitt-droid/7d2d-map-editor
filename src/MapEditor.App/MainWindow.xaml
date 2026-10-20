@@ -41,9 +41,9 @@
         <KeyBinding Key="Z" Modifiers="Control+Shift" Command="{x:Static local:MainWindow.RedoCommand}" />
     </Window.InputBindings>
     <Window.CommandBindings>
-        <CommandBinding Command="{x:Static local:MainWindow.NewWorldCommand}" Executed="NewWorld_Executed" />
-        <CommandBinding Command="{x:Static local:MainWindow.OpenCommand}" Executed="Open_Executed" />
-        <CommandBinding Command="{x:Static local:MainWindow.OpenWorldCommand}" Executed="OpenWorld_Executed" />
+        <CommandBinding Command="{x:Static local:MainWindow.NewWorldCommand}" Executed="NewWorld_Executed" CanExecute="CanOpen_CanExecute" />
+        <CommandBinding Command="{x:Static local:MainWindow.OpenCommand}" Executed="Open_Executed" CanExecute="CanOpen_CanExecute" />
+        <CommandBinding Command="{x:Static local:MainWindow.OpenWorldCommand}" Executed="OpenWorld_Executed" CanExecute="CanOpen_CanExecute" />
         <CommandBinding Command="{x:Static local:MainWindow.SaveCommand}" Executed="Save_Executed" CanExecute="HasWorld_CanExecute" />
         <CommandBinding Command="{x:Static local:MainWindow.SaveAsCommand}" Executed="SaveAs_Executed" CanExecute="HasWorld_CanExecute" />
         <CommandBinding Command="{x:Static local:MainWindow.ExportCommand}" Executed="Export_Executed" CanExecute="HasWorld_CanExecute" />
@@ -378,12 +378,17 @@
                         </StackPanel>
                     </WrapPanel>
 
-                    <TextBlock Text="{Binding TownText}" Style="{StaticResource HintText}" Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                               Visibility="{Binding IsTownTool, Converter={StaticResource BoolToVisibility}}" />
-                    <TextBlock Text="{Binding PlacementText}" Style="{StaticResource HintText}" Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                               Visibility="{Binding IsPrefabTool, Converter={StaticResource BoolToVisibility}}" />
-                    <TextBlock Text="{Binding SelectionText}" Style="{StaticResource HintText}" Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                               Visibility="{Binding ShowSelectionText, Converter={StaticResource BoolToVisibility}}" />
+                    <!-- One of these at a time, over an invisible six lines that hold the strip's height while the text changes. -->
+                    <Grid>
+                        <TextBlock Text="&#10;&#10;&#10;&#10;&#10;" Style="{StaticResource HintText}" Margin="0,4,0,0" Opacity="0" IsHitTestVisible="False"
+                                   Visibility="{Binding ReservesInfoLines, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Text="{Binding TownText}" Style="{StaticResource HintText}" Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Visibility="{Binding IsTownTool, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Text="{Binding PlacementText}" Style="{StaticResource HintText}" Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Visibility="{Binding IsPrefabTool, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Text="{Binding SelectionText}" Style="{StaticResource HintText}" Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   Visibility="{Binding ShowSelectionText, Converter={StaticResource BoolToVisibility}}" />
+                    </Grid>
                     <TextBlock Text="{Binding CurrentTool.Hint}" Style="{StaticResource HintText}" Margin="0,4,0,0" />
                 </StackPanel>
             </DockPanel>

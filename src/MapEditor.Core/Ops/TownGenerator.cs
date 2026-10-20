@@ -1278,12 +1278,8 @@ public static class TownGenerator
                 for (int z = t.Z0; z < t.Z0 + Tile; z++) roads.Row(z).Slice(t.X0, Tile).Clear();
             }
 
+        // The blend leaves roads that were already there as they are.
         foreach (var t in plan.Tiles) PrefabPlacer.Flatten(world, t.Cells, plan.Ground, plan.Blend, session);
-        // Roads already crossing the blend were reshaped by it; even them out before the link roads are graded.
-        var cells = plan.Tiles.Select(t => t.Cells).ToList();
-        changed = changed.Union(RoadOp.Resmooth(world, changed, cells, session));
-        // Roads the town was built against ramp onto its ground, so they meet it without a step.
-        changed = changed.Union(RoadOp.RampToFootprints(world, cells, plan.Ground, session));
         world.Prefabs.AddRange(plan.Prefabs);
 
         foreach (var road in plan.Roads) changed = changed.Union(RoadOp.Draw(world, road, session));

@@ -42,6 +42,7 @@ public sealed class PrefabToolController
         {
             _hover = m is { } p && World is { } w ? new Point(p.X, w.Size - p.Y) : null;
             if (_dragging is null) UpdateGhost();
+            UpdateSpawnGhost(m);
             // A hand over what the Select tool can pick up.
             if (_vm.IsSelectTool && !IsDragging && !_map.IsPanning)
             {
@@ -164,10 +165,16 @@ public sealed class PrefabToolController
     private void Place(World world, PrefabInfo info)
     {
         if (_hover is not { } at) return;
-        var spot = PrefabPlacer.SpotAt(world, Library, info, (float)at.X, (float)at.Y, _vm.PrefabRotation, out var lot);
+        var spot = PrefabPlacer.SpotAt(world, Library, info, (float)at.X, (float)at.Y, _vm.PrefabRotation, out var lot,
+            snapTiles: SnapsTiles);
         spot = Snapped(world, info, spot, lot, null);
         bool inLot = lot is { Fits: true };
         var covered = PrefabPlacer.Covered(world, Library, info, spot);
+        if (PrefabPlacer.TileInTheWay(world, Library, info, spot, covered) is { } clash)
+        {
+            _vm.Status = InTheWay(clash);
+            return;
+        }
         var problems = PrefabPlacer.Check(world, Library, info, spot, covered, snappedToLot: inLot);
         var session = new EditSession("Place " + info.Name);
         foreach (var old in covered) PrefabPlacer.Delete(world, Library, old, session);
@@ -238,7 +245,8 @@ public sealed class PrefabToolController
         var centre = grid - _grab;
         var ignore = PrefabPlacer.Contents(world, Library, p);
         ignore.Add(p);
-        var spot = PrefabPlacer.SpotAt(world, Library, info, (float)centre.X, (float)centre.Y, p.Rotation, out var lot, ignore);
+        var spot = PrefabPlacer.SpotAt(world, Library, info, (float)centre.X, (float)centre.Y, p.Rotation, out var lot, ignore,
+            snapTiles: SnapsTiles);
         spot = Snapped(world, info, spot, lot, ignore);
         _dropInLot = lot is { Fits: true };
         _dropSpot = spot;
@@ -256,6 +264,14 @@ public sealed class PrefabToolController
         if (_dropSpot is not { } spot || spot.Position == p.Position && spot.Rotation == p.Rotation)
         {
             Select(p);
+            return;
+        }
+        if (Library.Find(p.Name) is { } info
+            && PrefabPlacer.TileInTheWay(world, Library, info, spot, [.. PrefabPlacer.Contents(world, Library, p), p, .. _dropCovered]) is { } clash)
+        {
+            _dropCovered = [];
+            Select(p);
+            _vm.Status = InTheWay(clash);
             return;
         }
         MoveTo(world, p, spot, _dropInLot, "Move " + p.Name, _dropCovered);
@@ -286,6 +302,12 @@ public sealed class PrefabToolController
         return PrefabPlacer.SnapToTiles(world, Library, info, spot, snap, ignore);
     }
 
+    /// <summary>Street tiles snap to the grid of a tile nearby unless Alt is held.</summary>
+    private static bool SnapsTiles => !Keyboard.Modifiers.HasFlag(ModifierKeys.Alt);
+
+    private static string InTheWay(PrefabInstance clash) =>
+        $"Street tiles can't overlap: this one would overlap {clash.Name}. Move it clear, or over that tile's middle to replace it.";
+
     private static string Replacing(List<PrefabInstance> covered, string lead = ", ") =>
         covered.Count == 0 ? "" : lead + "replacing " + string.Join(", ", covered.Select(p => p.Name));
 
@@ -313,12 +335,13 @@ public sealed class PrefabToolController
             if (_selected is not null) _vm.Status = $"{_selected.Name} is not in the game folder's prefabs, so it can't be turned.";
             return;
         }
-        // Turn about the footprint centre; street tiles are square and stay on their grid cell.
+        // Turn about the footprint centre; street tiles are square and stay where they are.
         var (sx, sz) = info.Footprint(p.Rotation);
         var centre = new Point(world.WorldToGrid(p.Position.X) + sx / 2.0, world.WorldToGrid(p.Position.Z) + sz / 2.0);
         var ignore = PrefabPlacer.Contents(world, Library, p);
         ignore.Add(p);
-        var spot = PrefabPlacer.SpotAt(world, Library, info, (float)centre.X, (float)centre.Y, p.Rotation + quarterTurns, out var lot, ignore);
+        var spot = PrefabPlacer.SpotAt(world, Library, info, (float)centre.X, (float)centre.Y, p.Rotation + quarterTurns, out var lot, ignore,
+            snapTiles: false);
         if (lot is { Fits: true } && spot.Rotation == p.Rotation)
         {
             _vm.Status = "This prefab is in a street-tile lot, which sets its rotation so it faces the street.";
@@ -454,6 +477,19 @@ public sealed class PrefabToolController
         _vm.SelectionText = spawn is null ? "" : $"Spawn at {spawn.X:0} E, {spawn.Z:0} N, y {spawn.Y:0}\nFacing {spawn.RotationY:0}° (Q and E turn it)";
     }
 
+    /// <summary>
+    /// The Spawn tool's ghost under the mouse (<paramref name="mapPoint"/>), where a click would add a spawn point: not
+    /// over an existing one (a click selects that) or while one is dragged.
+    /// </summary>
+    private void UpdateSpawnGhost(Point? mapPoint)
+    {
+        Point? ghost = null;
+        if (_vm.IsSpawnTool && _spawnSession is null && mapPoint is { } m && World is { } world && _hover is { } grid
+            && world.Height.Contains((int)grid.X, (int)grid.Y) && SpawnNear(world, grid) is null)
+            ghost = m;
+        _map.SpawnGhost = ghost;
+    }
+
     /// <summary>Redraws the placement ghost under the mouse while a prefab is picked in the browser.</summary>
     public void UpdateGhost()
     {
@@ -466,7 +502,8 @@ public sealed class PrefabToolController
                 _vm.PlacementText = "No trader prefabs found. Set the game folder under Settings.";
             return;
         }
-        var spot = PrefabPlacer.SpotAt(world, Library, info, (float)at.X, (float)at.Y, _vm.PrefabRotation, out var lot);
+        var spot = PrefabPlacer.SpotAt(world, Library, info, (float)at.X, (float)at.Y, _vm.PrefabRotation, out var lot,
+            snapTiles: SnapsTiles);
         spot = Snapped(world, info, spot, lot, null);
         var covered = PrefabPlacer.Covered(world, Library, info, spot);
         var problems = PrefabPlacer.Check(world, Library, info, spot, covered, snappedToLot: lot is { Fits: true });

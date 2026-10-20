@@ -25,7 +25,7 @@ public partial class ShortcutsWindow : Window
             ]),
             new("Snapping",
             [
-                new(["Alt+click"], "Place a road point, POI or trader without snapping"),
+                new(["Alt+click"], "Place a road point, POI, trader or street tile without snapping"),
             ]),
             new("Prefabs",
             [

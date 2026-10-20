@@ -262,6 +262,20 @@ public sealed class MapView : FrameworkElement
         }
     }
 
+    private Point? _spawnGhost;
+
+    /// <summary>Where the Spawn tool would add a spawn point (map pixels), drawn see-through under the cursor.</summary>
+    public Point? SpawnGhost
+    {
+        get => _spawnGhost;
+        set
+        {
+            if (_spawnGhost == value) return;
+            _spawnGhost = value;
+            InvalidateVisual();
+        }
+    }
+
     private TownPreview? _townPreview;
 
     /// <summary>The Town tool's selection and planned town.</summary>
@@ -552,6 +566,7 @@ public sealed class MapView : FrameworkElement
         if (ShowSpawns) DrawSpawns(dc, visible);
         DrawTownPreview(dc);
         DrawPrefabGhost(dc);
+        DrawSpawnGhost(dc);
         DrawRoadPreview(dc);
         DrawBrushCursor(dc);
     }
@@ -975,6 +990,18 @@ public sealed class MapView : FrameworkElement
         double u = p.Position.X + half;
         double vTop = size - (p.Position.Z + half + sz);
         return new Rect(u, vTop, sx, sz);
+    }
+
+    /// <summary>A new spawn point as it would be added: facing north, like <see cref="DrawSpawns"/> draws them.</summary>
+    private void DrawSpawnGhost(DrawingContext dc)
+    {
+        if (_spawnGhost is not { } m || _renderer is null) return;
+        var c = MapToScreen(m);
+        dc.PushOpacity(0.6);
+        dc.DrawLine(CursorShadowPen, c, c + new Vector(0, -16));
+        dc.DrawLine(SpawnFacingPen, c, c + new Vector(0, -16));
+        dc.DrawEllipse(SpawnFill, SpawnPen, c, 5, 5);
+        dc.Pop();
     }
 
     private void DrawSpawns(DrawingContext dc, Rect visible)

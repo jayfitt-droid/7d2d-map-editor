@@ -167,7 +167,33 @@ public partial class MainWindow : Window
 
     // ---- new / open --------------------------------------------------------
 
-    private async void NewWorld_Executed(object sender, ExecutedRoutedEventArgs e)
+    private bool _opening; // New, Open or Open World Folder is under way
+
+    private void CanOpen_CanExecute(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = !_opening && !_vm.IsBusy;
+
+    /// <summary>
+    /// Runs New, Open or Open World Folder once at a time: each waits (for the game data, or the unsaved-changes prompt)
+    /// before its dialog shows, and a second click in that time would open a second dialog.
+    /// </summary>
+    private async Task OnceAtATime(Func<Task> open)
+    {
+        if (_opening || _vm.IsBusy) return;
+        _opening = true;
+        CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            await open();
+        }
+        finally
+        {
+            _opening = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private async void NewWorld_Executed(object sender, ExecutedRoutedEventArgs e) => await OnceAtATime(NewWorldAsync);
+
+    private async Task NewWorldAsync()
     {
         if (!await ConfirmDiscardAsync()) return;
         await _gameDataLoad;
@@ -192,7 +218,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void Open_Executed(object sender, ExecutedRoutedEventArgs e)
+    private async void Open_Executed(object sender, ExecutedRoutedEventArgs e) => await OnceAtATime(OpenAsync);
+
+    private async Task OpenAsync()
     {
         if (!await ConfirmDiscardAsync()) return;
         var dialog = new OpenFileDialog
@@ -245,7 +273,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OpenWorld_Executed(object sender, ExecutedRoutedEventArgs e)
+    private async void OpenWorld_Executed(object sender, ExecutedRoutedEventArgs e) => await OnceAtATime(OpenWorldFolderAsync);
+
+    private async Task OpenWorldFolderAsync()
     {
         if (!await ConfirmDiscardAsync()) return;
         var dialog = new OpenFolderDialog
@@ -903,6 +933,7 @@ public partial class MainWindow : Window
                     _vm.ShowSidePanel = true;
                 }
                 if (!_vm.IsRoadTool) _tools.CancelRoad();
+                if (!_vm.IsSpawnTool) Map.SpawnGhost = null;
                 // The trader starts facing north, as a new pick in the browser does.
                 if (_vm.IsTraderTool && _vm.SelectedTrader is { } trader) _vm.PrefabRotation = trader.RotationToFaceNorth & 3;
                 _prefabTools.Refresh();
@@ -1154,7 +1185,7 @@ public partial class MainWindow : Window
 
     private async void RecentItem_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem { Tag: string path } || _vm.IsBusy) return;
+        if (sender is not MenuItem { Tag: string path } || _vm.IsBusy || _opening) return;
         bool isProject = path.EndsWith(ProjectStore.Extension, StringComparison.OrdinalIgnoreCase);
         if (isProject ? !File.Exists(path) : !Directory.Exists(path))
         {

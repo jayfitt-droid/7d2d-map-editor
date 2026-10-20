@@ -197,7 +197,7 @@ public sealed class PrefabTests : IDisposable
     }
 
     [Fact]
-    public void Street_tiles_snap_to_the_grid_and_match_a_neighbours_height()
+    public void Street_tiles_snap_to_a_neighbours_grid_and_match_its_height()
     {
         var world = Flat(metres: 40);
         var tile = Tile();
@@ -208,9 +208,13 @@ public sealed class PrefabTests : IDisposable
         var spot = PrefabPlacer.SpotAt(world, library, tile, 320, 70, 0, out _);
         Assert.Equal(new PrefabSpot(300 - 512, 55 + 1 - 12, -512, 0), spot);
 
-        // With no neighbour it sits on the ground.
+        // With no tile nearby it goes where it's put, centred on the cursor, and sits on the ground.
         var alone = PrefabPlacer.SpotAt(world, library, tile, 820, 820, 0, out _);
-        Assert.Equal(new PrefabSpot(750 - 512, 40 + 1 - 12, 750 - 512, 0), alone);
+        Assert.Equal(new PrefabSpot(745 - 512, 40 + 1 - 12, 745 - 512, 0), alone);
+
+        // Alt (no snapping) frees it beside a tile too.
+        var free = PrefabPlacer.SpotAt(world, library, tile, 320, 70, 0, out _, snapTiles: false);
+        Assert.Equal(new PrefabSpot(245 - 512, 40 + 1 - 12, -5 - 512, 0), free);
     }
 
     [Fact]
@@ -378,5 +382,31 @@ public sealed class PrefabTests : IDisposable
 
         Assert.Equal([old], PrefabPlacer.Covered(world, library, house, new PrefabSpot(5, 40, 5, 0)));
         Assert.Empty(PrefabPlacer.Covered(world, library, house, new PrefabSpot(15, 40, 0, 0)));
+    }
+
+    [Fact]
+    public void A_street_tile_replaces_a_tile_whose_centre_it_covers_and_cannot_partly_overlap_one()
+    {
+        var world = Flat();
+        var tile = Tile();
+        var house = Poi("house", 20, 30);
+        var library = PrefabLibrary.Of([tile, house]);
+        var old = new PrefabInstance { Name = tile.Name, Position = new Int3(0, 29, 0) };
+        world.Prefabs.Add(old);
+
+        // Over its middle: replaced, nothing in the way.
+        var over = new PrefabSpot(40, 29, -30, 0);
+        var covered = PrefabPlacer.Covered(world, library, tile, over);
+        Assert.Equal([old], covered);
+        Assert.Null(PrefabPlacer.TileInTheWay(world, library, tile, over, covered));
+
+        // Partly over it: in the way, and not replaced.
+        var partly = new PrefabSpot(100, 29, 0, 0);
+        Assert.Empty(PrefabPlacer.Covered(world, library, tile, partly));
+        Assert.Equal(old, PrefabPlacer.TileInTheWay(world, library, tile, partly));
+
+        // Clear of it, and POIs never count.
+        Assert.Null(PrefabPlacer.TileInTheWay(world, library, tile, new PrefabSpot(150, 29, 0, 0)));
+        Assert.Null(PrefabPlacer.TileInTheWay(world, library, house, new PrefabSpot(10, 40, 10, 0)));
     }
 }

@@ -103,7 +103,7 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBrushTool), nameof(IsStampTool), nameof(IsFlattenTool), nameof(IsNoiseTool),
         nameof(HasRadius), nameof(IsBiomeTool), nameof(IsRadiationTool), nameof(IsWaterTool), nameof(IsRoadTool),
-        nameof(IsPrefabTool), nameof(IsTraderTool), nameof(IsPrefabsTool), nameof(PlacingPrefab), nameof(IsSpawnTool), nameof(IsSelectTool), nameof(ShowSelectionText), nameof(IsTownTool), nameof(ShowPrefabCard), nameof(CardPrefab), nameof(CardName), nameof(CardText), nameof(CardHasActions), nameof(CurrentTool),
+        nameof(IsPrefabTool), nameof(IsTraderTool), nameof(IsPrefabsTool), nameof(PlacingPrefab), nameof(IsSpawnTool), nameof(IsSelectTool), nameof(ShowSelectionText), nameof(IsTownTool), nameof(ReservesInfoLines), nameof(ShowPrefabCard), nameof(CardPrefab), nameof(CardName), nameof(CardText), nameof(CardHasActions), nameof(CurrentTool),
         nameof(HasSize), nameof(SizeValue), nameof(SizeMin), nameof(SizeMax), nameof(SizeText),
         nameof(HasStrength), nameof(StrengthValue), nameof(StrengthMin), nameof(StrengthText), nameof(CurrentSwatch))]
     private EditorTool _selectedTool = EditorTool.Select;
@@ -126,6 +126,12 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>The selection text under the ribbon: for spawns, which have no info card.</summary>
     public bool ShowSelectionText => IsSpawnTool || IsSelectTool && !HasPrefabSelection;
     public bool IsTownTool => SelectedTool == EditorTool.Town;
+
+    /// <summary>
+    /// Tools whose text under the ribbon changes as the mouse moves (a warning, a lot, what's replaced): it keeps room
+    /// for its longest, so the map below doesn't jump.
+    /// </summary>
+    public bool ReservesInfoLines => IsPrefabTool || IsTownTool || IsSpawnTool || IsSelectTool;
     public bool HasRadius => IsBrushTool || IsBiomeTool || IsRadiationTool || IsRoadTool;
 
     [ObservableProperty] private double _brushRadius = 60;
