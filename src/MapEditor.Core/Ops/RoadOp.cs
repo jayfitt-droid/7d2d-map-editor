@@ -115,7 +115,148 @@ public static class RoadOp
             for (int i = 1; i < heights.Length - 1; i++)
                 heights[i] = Math.Max((copy[i - 1] + copy[i] + copy[i + 1]) / 3f, floor[i]);
         }
+        LevelFlats(heights, line, floor);
         return heights;
+    }
+
+    /// <summary>Steepest grade (rise over run) a stretch of road can have and still count as flat.</summary>
+    public const float FlatGrade = 0.01f;
+
+    /// <summary>Most a flat stretch's height may vary from end to end, in metres.</summary>
+    public const float FlatRange = 1f;
+
+    /// <summary>Shortest stretch of road, in metres, that is levelled.</summary>
+    public const float FlatMinLength = 20f;
+
+    /// <summary>Distance, in metres, over which a levelled stretch blends back into the road beyond it.</summary>
+    public const float FlatTransition = 20f;
+
+    /// <summary>
+    /// Levels each flat stretch of the profile to a whole metre (its average height, rounded). Prefabs sit at
+    /// whole metres, so a road at 40.11 m beside a trader at 40.00 m shows a lip; levelled, both are at 40.00 m
+    /// and the road is flat. Sloping road and causeways are left alone; the change fades out beyond a stretch.
+    /// </summary>
+    public static void LevelFlats(float[] heights, IReadOnlyList<Vector2> line, float[] floor)
+    {
+        int n = heights.Length;
+        if (n < 3) return;
+        var along = new float[n];
+        for (int i = 1; i < n; i++) along[i] = along[i - 1] + Vector2.Distance(line[i - 1], line[i]);
+
+        // Flat stretches: runs of samples joined by gentle steps, off the water, varying by no more than FlatRange.
+        var runs = new List<(int Start, int End, float Level)>();
+        for (int i = 0; i < n;)
+        {
+            int end = i;
+            float lo = heights[i], hi = heights[i];
+            while (end + 1 < n && floor[end + 1] == 0 && floor[i] == 0)
+            {
+                float step = MathF.Abs(heights[end + 1] - heights[end]);
+                float run = Math.Max(along[end + 1] - along[end], 1e-3f);
+                float next = heights[end + 1];
+                if (step / run > FlatGrade || Math.Max(hi, next) - Math.Min(lo, next) > FlatRange) break;
+                lo = Math.Min(lo, next);
+                hi = Math.Max(hi, next);
+                end++;
+            }
+            if (end > i && along[end] - along[i] >= FlatMinLength)
+            {
+                float sum = 0;
+                for (int j = i; j <= end; j++) sum += heights[j];
+                float level = MathF.Round(sum / (end - i + 1));
+                runs.Add((i, end, level));
+            }
+            i = end + 1;
+        }
+        SpaceRuns(runs, heights, along);
+        if (runs.Count == 0) return;
+
+        // Each run is set to its level. Between and beyond runs the change from the old height (at the run's
+        // end) eases away over FlatTransition, or eases from one run's change to the next where they are close.
+        var offset = new float[n];
+        var original = (float[])heights.Clone();
+        for (int r = 0; r < runs.Count; r++)
+        {
+            var (start, end, level) = runs[r];
+            for (int j = start; j <= end; j++) heights[j] = level;
+            float endShift = level - original[end];
+            float startShift = level - original[start];
+
+            int gapEnd = r + 1 < runs.Count ? runs[r + 1].Start : n;
+            float nextShift = r + 1 < runs.Count ? runs[r + 1].Level - original[runs[r + 1].Start] : 0;
+            bool close = r + 1 < runs.Count && along[gapEnd] - along[end] <= 2 * FlatTransition;
+            for (int j = end + 1; j < gapEnd; j++)
+            {
+                if (close)
+                {
+                    float t = (along[j] - along[end]) / (along[gapEnd] - along[end]);
+                    offset[j] = endShift + (nextShift - endShift) * SmoothStep(t);
+                }
+                else
+                {
+                    offset[j] += endShift * (1 - SmoothStep((along[j] - along[end]) / FlatTransition));
+                    if (r + 1 < runs.Count)
+                        offset[j] += nextShift * (1 - SmoothStep((along[gapEnd] - along[j]) / FlatTransition));
+                }
+            }
+            if (r == 0)
+                for (int j = 0; j < start; j++)
+                    offset[j] = startShift * (1 - SmoothStep((along[start] - along[j]) / FlatTransition));
+        }
+        for (int j = 0; j < n; j++)
+            if (offset[j] != 0) heights[j] = Math.Max(heights[j] + offset[j], floor[j]);
+    }
+
+    /// <summary>Average grade of the ramp between two levelled stretches at different whole metres.</summary>
+    public const float FlatRampGrade = 0.02f;
+
+    /// <summary>
+    /// Makes neighbouring runs fit together. Close runs at the same level that nothing much rises or dips
+    /// between are joined into one. Runs at different levels are cut back at the ends that face each other
+    /// until the gap holds a ramp no steeper than <see cref="FlatRampGrade"/>; a run cut shorter than
+    /// <see cref="FlatMinLength"/> is dropped.
+    /// </summary>
+    private static void SpaceRuns(List<(int Start, int End, float Level)> runs, float[] heights, float[] along)
+    {
+        for (bool changed = true; changed;)
+        {
+            changed = false;
+            for (int r = 0; r + 1 < runs.Count && !changed; r++)
+            {
+                var a = runs[r];
+                var b = runs[r + 1];
+                float gap = along[b.Start] - along[a.End];
+                if (a.Level == b.Level)
+                {
+                    if (gap > 2 * FlatTransition) continue;
+                    bool level = true;
+                    for (int j = a.End + 1; j < b.Start; j++)
+                        level &= MathF.Abs(heights[j] - a.Level) <= FlatRange / 2;
+                    if (!level) continue;
+                    runs[r] = (a.Start, b.End, a.Level);
+                    runs.RemoveAt(r + 1);
+                    changed = true;
+                    continue;
+                }
+                float need = MathF.Abs(a.Level - b.Level) / FlatRampGrade;
+                if (gap >= need) continue;
+                float cut = (need - gap) / 2;
+                int aEnd = a.End, bStart = b.Start;
+                while (aEnd > a.Start && along[a.End] - along[aEnd] < cut) aEnd--;
+                while (bStart < b.End && along[bStart] - along[b.Start] < cut) bStart++;
+                runs[r + 1] = (bStart, b.End, b.Level);
+                runs[r] = (a.Start, aEnd, a.Level);
+                for (int k = r + 1; k >= r; k--)
+                    if (along[runs[k].End] - along[runs[k].Start] < FlatMinLength) runs.RemoveAt(k);
+                changed = true;
+            }
+        }
+    }
+
+    private static float SmoothStep(float t)
+    {
+        t = Math.Clamp(t, 0, 1);
+        return t * t * (3 - 2 * t);
     }
 
     /// <summary>Draws the road into <see cref="World.Roads"/> (and grades the terrain if asked). Returns the changed area.</summary>

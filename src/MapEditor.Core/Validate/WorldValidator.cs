@@ -87,7 +87,10 @@ public static class WorldValidator
                 Add(new(IssueSeverity.Error, $"{p.Name} is outside the world.", Math.Clamp(mx, 0, world.Size - 1), Math.Clamp(mz, 0, world.Size - 1)));
                 continue;
             }
-            if (info.IsPart || info.IsStreetTile) continue;
+            if (info.IsPart) continue;
+            if (PrefabPlacer.RoadMismatch(world, cells, PrefabPlacer.GroundUnder(info, p.Position.Y)) is var step and > PrefabPlacer.RoadStep)
+                Add(new(IssueSeverity.Warning, $"{p.Name} doesn't meet the road beside it level: the road is up to {step:0.0} m off its ground. Flatten the road and the ground on both sides, then place it again.", mx, mz));
+            if (info.IsStreetTile) continue;
             pois.Add((p, cells));
 
             if (world.Water is { } water && WetShare(world, water, cells) is var wet and >= WetPercent)

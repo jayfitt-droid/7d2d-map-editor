@@ -51,7 +51,7 @@ public sealed class TerrainToolController
                 SampleWaterLevel(world, grid);
             else if (world.Height.Contains((int)grid.X, (int)grid.Y))
             {
-                _vm.FlattenHeight = Math.Round(World.HeightToMetres(world.Height[(int)grid.X, (int)grid.Y]), 1);
+                _vm.FlattenHeight = SampleFlattenHeight(world, grid);
                 _vm.Status = $"Flatten height set to {_vm.FlattenHeight:0.0} m";
             }
             return;
@@ -92,7 +92,7 @@ public sealed class TerrainToolController
         _noise = tool == EditorTool.Noise ? new Noise(Environment.TickCount) : null;
 
         if (tool == EditorTool.Flatten && !_vm.FlattenLocked && world.Height.Contains((int)grid.X, (int)grid.Y))
-            _vm.FlattenHeight = Math.Round(World.HeightToMetres(world.Height[(int)grid.X, (int)grid.Y]), 1);
+            _vm.FlattenHeight = SampleFlattenHeight(world, grid);
 
         if (tool == EditorTool.Stamp)
             PlaceStamp(world, grid);
@@ -313,6 +313,13 @@ public sealed class TerrainToolController
     public void RefreshRoadPreview()
     {
         if (_roadPoints.Count > 0) UpdateRoadPreview();
+    }
+
+    /// <summary>The ground height under <paramref name="grid"/> as a Flatten target: whole metres if asked, else to 0.1 m.</summary>
+    private double SampleFlattenHeight(World world, Point grid)
+    {
+        double h = World.HeightToMetres(world.Height[(int)grid.X, (int)grid.Y]);
+        return _vm.FlattenWholeMetres ? Math.Round(h, MidpointRounding.AwayFromZero) : Math.Round(h, 1);
     }
 
     private void SampleWaterLevel(World world, Point grid)

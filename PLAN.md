@@ -89,6 +89,12 @@ tests/MapEditor.Core.Tests/
 11. **v1.2.0** (opened 2026-10-19):
    - **Bug: a lip where a drawn road meets a prefab.** Prefabs sit at whole metres (`y = ground + 1 + YOffset`), but a drawn road follows the smoothed ground, so its height is almost always fractional. In the user's 1.1Test world the road was at 40.11 m and the tiles and traders beside it at 40.00 m; the game draws that 0.11 m as a visible lip on both sides of the street. The v1.1 ramp hid it by setting the road to the prefab's height, but it bent the road too far and was removed. For now the lip stays, and drawn roads are left exactly as drawn (the user doesn't want a road's flatness changed). Generated towns don't have it, since their tiles carry their own streets.
      - Ideas so far, none chosen: level the road to the prefab's whole metre only where they meet (a change under 0.5 m, fading over ~20 m); level only roads drawn after the prefab, at the point they meet it; or grade drawn roads in whole-metre steps on flat ground.
+     - **Chosen (2026-10-20), on branch `road-whole-metre`:** RWG doesn't solve this either: it places POIs and towns at whole metres first, then its road smoothing holds their footprints fixed and blurs the last few metres of road toward them (`SmoothRoadTerrainTask`), so on slopes it leaves steps too. The editor now:
+       - **Levels flat road to whole metres** (`RoadOp.LevelFlats`): stretches of 20 m or more, under 1% grade and within 1 m are set to their rounded average; the change fades over 20 m beyond them. Neighbouring stretches at different levels leave room for a ~2% ramp, and close ones at the same level join (`SpaceRuns`). Slopes, causeways and roads already drawn are unchanged.
+       - **Warns** when a placed POI, trader or tile has road within 3 m that is 0.6 m or more off its ground (`PrefabPlacer.RoadMismatch`, `RoadStep`), when placing and in the Issues panel, suggesting the Flatten tool.
+       - **Flatten "Whole metres"** checkbox (on by default) rounds the height picked from the map.
+       - **Workflow (the user, after testing):** on hilly ground, flatten the road and the ground on both sides before hand-placing tiles, POIs or traders against a drawn road. Checked in the editor and in game.
+       - Not changed: placing a prefab still never touches roads; the road-tool "landing" (levelling a road across an existing prefab's frontage on a slope) was offered and not chosen.
 
 Each milestone ends with a world that loads in game.
 

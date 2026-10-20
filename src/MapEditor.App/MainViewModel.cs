@@ -138,6 +138,8 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private double _brushStrength = 0.5;
     [ObservableProperty] private double _flattenHeight = 40;
     [ObservableProperty] private bool _flattenLocked;
+    /// <summary>Flatten heights picked from the map are rounded to whole metres, the height prefabs and levelled roads sit at.</summary>
+    [ObservableProperty] private bool _flattenWholeMetres = true;
     [ObservableProperty] private double _noiseScale = 48;
 
     public IReadOnlyList<BrushShape> BrushShapes { get; } = Enum.GetValues<BrushShape>();

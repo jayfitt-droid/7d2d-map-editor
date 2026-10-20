@@ -59,4 +59,25 @@ public sealed class PrefabRoadTests
         var away = PrefabPlacer.SpotAt(world, library, poi, 220, 450, 0, out _);
         Assert.Equal(PrefabPlacer.PrefabY(poi, 40), away.Y);
     }
+    [Fact]
+    public void A_road_level_with_the_prefab_is_not_flagged()
+    {
+        var world = WorldWithRoad();
+        Assert.Equal(0, PrefabPlacer.RoadMismatch(world, new GridRect(200, 305, 240, 345), 43), 2);
+        Assert.Equal(0, PrefabPlacer.RoadMismatch(world, new GridRect(200, 320, 240, 360), 40), 2); // no road within 3 m
+    }
+
+    [Fact]
+    public void A_road_sloping_past_the_prefab_is_flagged()
+    {
+        var world = WorldWithRoad();
+        // The road climbs 5% eastwards: 40 m long frontage, 2 m rise.
+        for (int z = 295; z < 305; z++)
+            for (int x = 0; x < 600; x++) world.Height[x, z] = World.MetresToHeight(30 + x * 0.05f);
+        var cells = new GridRect(200, 305, 240, 345);
+        int ground = PrefabPlacer.RoadGround(world, cells)!.Value;
+        Assert.Equal(41, ground);
+        Assert.InRange(PrefabPlacer.RoadMismatch(world, cells, ground), 1.0f, 1.2f);
+        Assert.True(PrefabPlacer.RoadMismatch(world, cells, ground) > PrefabPlacer.RoadStep);
+    }
 }

@@ -288,6 +288,8 @@
                                      AutomationProperties.Name="Target height" />
                             <CheckBox Content="Lock height" IsChecked="{Binding FlattenLocked}" Margin="12,0,0,0"
                                       ToolTip="Otherwise the height is picked where each stroke starts" />
+                            <CheckBox Content="Whole metres" IsChecked="{Binding FlattenWholeMetres}" Margin="12,0,0,0"
+                                      ToolTip="Round the height picked from the map to a whole metre, the height prefabs and levelled roads sit at" />
                         </StackPanel>
                         <StackPanel Style="{StaticResource OptionGroup}" Visibility="{Binding IsNoiseTool, Converter={StaticResource BoolToVisibility}}">
                             <TextBlock Text="{Binding NoiseScale, StringFormat=Feature size {0:0} m}" Style="{StaticResource OptionLabel}" />

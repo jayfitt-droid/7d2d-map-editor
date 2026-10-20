@@ -165,6 +165,32 @@ public static class PrefabPlacer
         return (int)MathF.Round(heights[heights.Count / 2]);
     }
 
+    /// <summary>A road beside a prefab this far (in metres) or more above or below its ground is flagged (0.6 m, as shown).</summary>
+    public const float RoadStep = 0.55f;
+
+    /// <summary>
+    /// How far (in metres) the road that meets <paramref name="cells"/> strays above or below the prefab's ground at
+    /// worst: the road pixels within <see cref="RoadTouch"/> m, against <paramref name="ground"/>. Zero when no road
+    /// comes that close. On a slope a flat prefab can only meet the road level at one point, so this grows with the grade.
+    /// </summary>
+    public static float RoadMismatch(World world, GridRect cells, int ground)
+    {
+        if (world.Roads is not { } roads) return 0;
+        var near = new GridRect(cells.X0 - RoadTouch, cells.Z0 - RoadTouch, cells.X1 + RoadTouch, cells.Z1 + RoadTouch)
+            .Clamp(world.Size, world.Size);
+        float worst = 0;
+        for (int z = near.Z0; z < near.Z1; z++)
+            for (int x = near.X0; x < near.X1; x++)
+            {
+                if (roads[x, z] == 0) continue;
+                int dx = x < cells.X0 ? cells.X0 - x : x >= cells.X1 ? x - (cells.X1 - 1) : 0;
+                int dz = z < cells.Z0 ? cells.Z0 - z : z >= cells.Z1 ? z - (cells.Z1 - 1) : 0;
+                if (dx * dx + dz * dz > RoadTouch * RoadTouch) continue;
+                worst = Math.Max(worst, MathF.Abs(World.HeightToMetres(world.Height[x, z]) - ground));
+            }
+        return worst;
+    }
+
     /// <summary>
     /// Where the 150 m street tile grid starts (0 to 149 m east and north) near grid point (gx, gz): that of the
     /// nearest street tile within two tiles, else null.
@@ -418,6 +444,8 @@ public static class PrefabPlacer
             }
         if (wet > 0) problems.Add($"{Math.Max(1, wet * 100 / ((long)(c.X1 - c.X0) * (c.Z1 - c.Z0)))}% under water");
         if (!snappedToLot && hi - lo > MaxGroundVariation) problems.Add($"ground varies by {hi - lo} m");
+        if (!snappedToLot && RoadMismatch(world, cells, GroundUnder(info, spot.Y)) is var step and > RoadStep)
+            problems.Add($"the road beside it is up to {step:0.0} m off its ground, so they won't meet level (flatten the road and ground there first)");
         return problems;
     }
 

@@ -45,6 +45,8 @@ The **Select** tool (V) picks up POIs, traders, street tiles and spawn points: c
 
 Placing a POI, trader or street tile never changes the roads you drew. One placed against a road takes the road's height, so they meet level; the ground around it still blends in, easing off beside roads.
 
+Drawn roads level their flat stretches to whole metres, the height prefabs sit at, so a POI beside the road meets it with no lip. On hilly ground a flat building can't meet a sloping road level, and placing one there warns you. To fix it, **flatten first**: with the Flatten tool (Whole metres on), drag a large brush along the road and the ground on both sides where the building will go, then place it. The road and the building end up at the same whole metre, with a gentle ramp at the edge of the flattened area. The Issues panel lists any POI, trader or street tile that doesn't meet its road level.
+
 The **Trader** tool (A) places a trader: pick one in the options or press **Random**.
 
 A world opened from a folder saves straight back to that folder with Ctrl+S, as before. Saved games keep the chunks they've already generated, so start a **new game** to see your changes everywhere.
