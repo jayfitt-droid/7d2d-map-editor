@@ -65,6 +65,29 @@ public sealed class PrefabTests : IDisposable
         Assert.Equal(MarkerType.PartSpawn, info.Markers[1].Type);
         Assert.Equal("part_trafficlight_single", info.Markers[1].Part);
         Assert.Equal(0.2f, info.Markers[1].PartChance);
+        Assert.False(info.HasDifficultyTier);
+        Assert.Equal(0, info.DifficultyTier);
+    }
+
+    [Fact]
+    public void Library_knows_a_set_tier_from_a_missing_one()
+    {
+        foreach (var (name, tier) in new[] { ("tier_zero", "0"), ("tier_three", "3") })
+        {
+            string xml = Path.Combine(_dir, name + ".xml");
+            File.WriteAllText(xml, $"""
+                <prefab>
+                  <property name="PrefabSize" value="20, 10, 20" />
+                  <property name="DifficultyTier" value="{tier}" />
+                </prefab>
+                """);
+            File.WriteAllText(Path.ChangeExtension(xml, ".tts"), "");
+        }
+
+        var library = PrefabLibrary.Load([_dir]);
+        Assert.True(library.Find("tier_zero")!.HasDifficultyTier);
+        Assert.Equal(0, library.Find("tier_zero")!.DifficultyTier);
+        Assert.Equal(3, library.Find("tier_three")!.DifficultyTier);
     }
 
     [Fact]

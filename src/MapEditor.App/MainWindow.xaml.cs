@@ -65,6 +65,8 @@ public partial class MainWindow : Window
         _autosaveTimer.Tick += async (_, _) => await AutosaveAsync();
         _autosaveTimer.Start();
         _vm.PropertyChanged += Vm_PropertyChanged;
+        // The automatic ribbon goes compact below this height (DIPs): 1366×768 at 100%, or 1080p at 150%.
+        SizeChanged += (_, _) => _vm.WindowIsShort = ActualHeight < 800;
 
         _tools = new TerrainToolController(Map, _vm, _undo);
         _tools.Edited += (_, _) => OnWorldEdited();
@@ -78,6 +80,8 @@ public partial class MainWindow : Window
         {
             _gameDataLoad = LoadGameDataAsync();
             _vm.Autosave = _settings.Autosave;
+            _vm.RibbonMode = _settings.RibbonMode;
+            _vm.Favourites = new HashSet<string>(_settings.FavouritePrefabs, StringComparer.OrdinalIgnoreCase);
             // MapEditor.exe "<world folder or .7dmap>" opens it straight away.
             var args = Environment.GetCommandLineArgs();
             if (args.Length > 1 && Directory.Exists(args[1])) await OpenWorldAsync(args[1]);
@@ -336,6 +340,7 @@ public partial class MainWindow : Window
         _tools.World = world;
         _prefabTools.World = world;
         _prefabTools.Refresh();
+        _vm.PlacedWorld = world;
         _townTools.World = world;
         _vm.SelectedTool = EditorTool.Select;
         _townTools.Refresh();
@@ -580,10 +585,36 @@ public partial class MainWindow : Window
         _vm.Status = "Validated: " + _vm.IssuesText;
         if (showPanel)
         {
-            _vm.SidePanelTab = 1;
+            _vm.SidePanelTab = MainViewModel.IssuesTab;
             _vm.ShowSidePanel = true;
         }
         return issues;
+    }
+
+    private void Placed_DoubleClick(object sender, MouseButtonEventArgs e) => JumpToPlaced();
+
+    private void Placed_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        JumpToPlaced();
+        e.Handled = true;
+    }
+
+    /// <summary>Centres the map on the prefab picked in the Placed list and selects it, with the Select tool if need be.</summary>
+    private void JumpToPlaced()
+    {
+        if (_vm.SelectedPlaced is not { } row || _world is not { } world || RefuseWhileBusy()) return;
+        if (!world.Prefabs.Contains(row.Instance))
+        {
+            _vm.RefreshPlaced();
+            return;
+        }
+        if (!_vm.IsPrefabTool && !_vm.IsSelectTool) _vm.SelectedTool = EditorTool.Select;
+        var (sx, sz) = row.Info?.Footprint(row.Instance.Rotation) ?? (1, 1);
+        double target = Math.Min(Map.ActualWidth, Map.ActualHeight) / Math.Clamp(Math.Max(sx, sz) * 3, 150, 1500);
+        if (Map.Scale < target) Map.ZoomTo(target);
+        Map.CenterOn(new Point(world.WorldToGrid(row.Instance.Position.X) + sx / 2.0, world.Size - world.WorldToGrid(row.Instance.Position.Z) - sz / 2.0));
+        _prefabTools.SelectPlaced(row.Instance);
     }
 
     private void Issue_DoubleClick(object sender, MouseButtonEventArgs e) => JumpToIssue();
@@ -713,6 +744,7 @@ public partial class MainWindow : Window
         _tools.World = null;
         _prefabTools.World = null;
         _prefabTools.Refresh();
+        _vm.PlacedWorld = null;
         _townTools.World = null;
         _townTools.Refresh();
         _vm.Issues.Clear();
@@ -755,6 +787,7 @@ public partial class MainWindow : Window
         {
             DeleteAutosave();
             _settings.Autosave = _vm.Autosave;
+            _settings.RibbonMode = _vm.RibbonMode;
             _settings.WindowMaximized = WindowState == WindowState.Maximized;
             _settings.WindowWidth = RestoreBounds.Width;
             _settings.WindowHeight = RestoreBounds.Height;
@@ -848,6 +881,7 @@ public partial class MainWindow : Window
         _dirty = true;
         _revision++;
         UpdateTitle();
+        _vm.RefreshPlaced();
         if (Map.Renderer is { } renderer) Overview.SetRenderer(renderer, _vm.Layers);
     }
 
@@ -875,7 +909,7 @@ public partial class MainWindow : Window
 
     private void ShowPrefabBrowser_Click(object sender, RoutedEventArgs e)
     {
-        _vm.SidePanelTab = 0;
+        _vm.SidePanelTab = MainViewModel.PrefabsTab;
         _vm.ShowSidePanel = true;
     }
 
@@ -887,7 +921,7 @@ public partial class MainWindow : Window
 
     private void WorldInfo_Click(object sender, RoutedEventArgs e)
     {
-        _vm.SidePanelTab = 2;
+        _vm.SidePanelTab = MainViewModel.WorldTab;
         _vm.ShowSidePanel = true;
     }
 
@@ -972,7 +1006,7 @@ public partial class MainWindow : Window
             case nameof(MainViewModel.SelectedTool):
                 if (_vm.SelectedTool == EditorTool.Prefab)
                 {
-                    _vm.SidePanelTab = 0;
+                    _vm.SidePanelTab = MainViewModel.PrefabsTab;
                     _vm.ShowSidePanel = true;
                 }
                 if (!_vm.IsRoadTool) _tools.CancelRoad();
@@ -982,6 +1016,9 @@ public partial class MainWindow : Window
                 _prefabTools.Refresh();
                 _townTools.Refresh();
                 UpdateToolState();
+                break;
+            case nameof(MainViewModel.Favourites):
+                SaveFavourites();
                 break;
             case nameof(MainViewModel.SelectedTrader):
             case nameof(MainViewModel.SelectedPrefabInfo):
@@ -1185,6 +1222,33 @@ public partial class MainWindow : Window
     private void TownCancel_Click(object sender, RoutedEventArgs e) => WithMapFocus(() => _townTools.Cancel());
 
     private void PrefabCardClose_Click(object sender, RoutedEventArgs e) => _prefabTools.Deselect();
+    private void PrefabCardBack_Click(object sender, RoutedEventArgs e) => _vm.CardShowsPick = false;
+
+    private void FavouriteRow_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is PrefabInfo p) _vm.ToggleFavourite(p);
+    }
+
+    private void CardFavourite_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.CardPrefab is { } p) _vm.ToggleFavourite(p);
+    }
+
+    /// <summary>Saves favourites as soon as they change, so they survive a crash.</summary>
+    private void SaveFavourites()
+    {
+        var names = _vm.Favourites.Order(StringComparer.OrdinalIgnoreCase).ToList();
+        if (names.SequenceEqual(_settings.FavouritePrefabs, StringComparer.OrdinalIgnoreCase)) return;
+        _settings.FavouritePrefabs = names;
+        try
+        {
+            _settings.Save();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _vm.Status = "Couldn't save favourites: " + ex.Message;
+        }
+    }
     private void PrefabTurnLeft_Click(object sender, RoutedEventArgs e) => WithMapFocus(() => _prefabTools.Rotate(1));
     private void PrefabTurnRight_Click(object sender, RoutedEventArgs e) => WithMapFocus(() => _prefabTools.Rotate(-1));
     private void PrefabRaise_Click(object sender, RoutedEventArgs e) => WithMapFocus(() => _prefabTools.NudgeHeight(1));

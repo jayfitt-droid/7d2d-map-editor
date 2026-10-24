@@ -368,15 +368,29 @@ public sealed class PrefabToolController
         }
     }
 
+    /// <summary>Selects a prefab picked in the Placed list.</summary>
+    public void SelectPlaced(PrefabInstance p)
+    {
+        if (World is not { } world || !world.Prefabs.Contains(p)) return;
+        SelectSpawn(null);
+        Select(p);
+    }
+
     public void Deselect()
     {
         Select(null);
         SelectSpawn(null);
     }
 
-    /// <summary>Esc: stops placing, else clears the selection. Returns false if there was nothing to cancel.</summary>
+    /// <summary>Esc: drops a pick shown on the card, else stops placing, else clears the selection. Returns false if there was nothing to cancel.</summary>
     public bool Cancel()
     {
+        // The card shows the browser's pick as a replacement: drop the pick, back to the map prefab.
+        if (_vm.CardShowsPick && _selected is not null && !_vm.IsTraderTool && _vm.SelectedPrefabInfo is not null)
+        {
+            _vm.SelectedPrefabInfo = null;
+            return true;
+        }
         if (_vm.SelectedTool == EditorTool.Prefab && Armed)
         {
             _vm.SelectedPrefabInfo = null;
@@ -443,6 +457,8 @@ public sealed class PrefabToolController
 
     private void Select(PrefabInstance? p)
     {
+        // A different prefab on the map: the card shows it, not the browser's pick.
+        if (!ReferenceEquals(_selected, p)) _vm.CardShowsPick = false;
         _selected = p;
         _map.SelectedPrefab = p;
         _vm.SelectedMapPrefab = p is null ? null : Library.Find(p.Name);
@@ -529,7 +545,9 @@ public sealed class PrefabToolController
     private static string Describe(PrefabInfo info, PrefabSpot spot, List<string> problems, LotSnap? lot, bool withName = true)
     {
         var (sx, sz) = info.Footprint(spot.Rotation);
-        string text = (withName ? info.Name + "\n" : "") + $"{sx}×{sz} m, tier {info.DifficultyTier}, front faces {Facing[info.FrontDirection(spot.Rotation)]}\n"
+        // The card has the name and a tier badge, so its text (withName false) leaves them out.
+        string text = (withName ? $"{info.Name}\n{sx}×{sz} m, tier {info.DifficultyTier}" : $"{sx}×{sz} m")
+                      + $", front faces {Facing[info.FrontDirection(spot.Rotation)]}\n"
                       + $"at {Where(spot)}, rotation {spot.Rotation}";
         if (lot is not null)
             text += lot.Fits ? $"\nIn a {lot.Lot.Size.X}×{lot.Lot.Size.Z} m lot, facing its street" : $"\nToo big for this {lot.Lot.Size.X}×{lot.Lot.Size.Z} m lot";

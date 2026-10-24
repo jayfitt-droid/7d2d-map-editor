@@ -19,6 +19,9 @@ public sealed class AppSettings
 
     public const int MaxRecentFiles = 10;
 
+    /// <summary>Prefab names starred in the browser, kept by name so they carry across worlds and game updates.</summary>
+    public List<string> FavouritePrefabs { get; set; } = [];
+
     /// <summary>Puts a project or world folder at the top of <see cref="RecentFiles"/>.</summary>
     public void AddRecent(string path)
     {
@@ -27,6 +30,10 @@ public sealed class AppSettings
         RecentFiles.Insert(0, path);
         if (RecentFiles.Count > MaxRecentFiles) RecentFiles.RemoveRange(MaxRecentFiles, RecentFiles.Count - MaxRecentFiles);
     }
+
+    /// <summary>The ribbon's size: automatic, full or compact (View > Ribbon).</summary>
+    [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<RibbonMode>))]
+    public RibbonMode RibbonMode { get; set; } = RibbonMode.Auto;
 
     /// <summary>Overrides the release feed for update checks (see Updates).</summary>
     public string? UpdateUrl { get; set; }

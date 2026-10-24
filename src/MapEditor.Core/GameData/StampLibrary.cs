@@ -74,9 +74,12 @@ public sealed class StampLibrary
         return new StampLibrary(files);
     }
 
-    /// <summary>All stamps whose name starts with <paramref name="prefix"/> (the game picks among these at random).</summary>
+    /// <summary>
+    /// All stamps whose name starts with <paramref name="prefix"/> (the game picks among these at random), including
+    /// the ones <see cref="Names"/> leaves out, such as filler_biome.
+    /// </summary>
     public IReadOnlyList<string> WithPrefix(string prefix) =>
-        Names.Where(n => n.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
+        _files.Keys.Where(n => n.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).Order(StringComparer.OrdinalIgnoreCase).ToList();
 
     public StampImage Get(string name)
     {

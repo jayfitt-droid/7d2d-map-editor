@@ -6,6 +6,23 @@ using MapEditor.Core.Validate;
 
 namespace MapEditor.App;
 
+/// <summary>
+/// A favourite star from a prefab name and the set of favourites: the glyph, or with the parameter "brush" its colour
+/// (the theme's caution colour when starred).
+/// </summary>
+public sealed class FavouriteStarConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        bool on = values is [string name, IReadOnlySet<string> set, ..] && set.Contains(name);
+        if (parameter as string != "brush") return on ? "★" : "☆";
+        return Application.Current.TryFindResource(on ? "SystemFillColorCautionBrush" : "TextFillColorSecondaryBrush") ?? Brushes.Gray;
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 /// <summary>A one-character mark for an issue's severity.</summary>
 public sealed class SeverityGlyphConverter : IValueConverter
 {

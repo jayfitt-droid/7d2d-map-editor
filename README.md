@@ -20,10 +20,10 @@ The window is laid out like Microsoft Paint:
 
 | Area | What it holds |
 |---|---|
-| **Ribbon** | Tools in groups (Navigate, Terrain, Paint, Build), the **Palette** (biome colours and road surfaces), **Layers** (what the map shows), and **Validate** / **Export** |
+| **Ribbon** | Tools in groups (Navigate, Terrain, Paint, Build), the **Palette** (biome colours and road surfaces), **Layers** (what the map shows), and **Validate** / **Export**. On a short window it turns into one compact row of icons; **View > Ribbon** keeps it full or compact |
 | **Tool options** | Settings for the active tool and a one-line hint. The ∨ at the right of the ribbon hides them |
 | **Left rail** | Brush **size** and **strength** sliders |
-| **Side panel** | The prefab browser, validation **Issues** (double-click one to jump to it) and **World** info |
+| **Side panel** | The **Prefabs** browser, the **Placed** list (search the prefabs in your world; double-click one to find and select it), validation **Issues** (double-click one to jump to it) and **World** info |
 | **Status bar** | Cursor position (game coordinates, height, biome, prefab), brush size, world size, messages and zoom |
 
 The usual workflow:
@@ -34,6 +34,10 @@ The usual workflow:
 4. **Export** (Ctrl+E) checks the world, then writes a world folder. Export to the game's `GeneratedWorlds` folder and the world shows up under New Game.
 
 The **Select** tool (V) picks up POIs, traders, street tiles and spawn points: click one to select it and see its details, drag it to move it, Q/E to turn it, PgUp/PgDn to raise or lower it, Del to remove it. Dragging empty ground pans the map. The Prefabs and Spawn tools can still select things too.
+
+The info card shows the selected prefab's picture, tier and details. Pick another prefab in the browser while one is selected and the card shows that one as its replacement: press **Replace** to swap it in, or **Back** (Esc) to return. Click the ☆ beside a prefab in the browser, or on the card, to make it a favourite; **Favourites** in the browser's category list shows them.
+
+**New World** can paint one biome over the whole map, or generate a layout of all biomes the way the game's world generator does: pick where they start (forest or wasteland in the middle, a ring, two rings, or a line) and each biome's share of the map. The same seed gives the same layout. As in the game, a biome in the middle keeps off the map's edges, so it can end up a little under its share. You can repaint biomes afterwards as usual.
 
 **Roads** snap as you draw. Click near the end of any road to carry it on: the new road starts there with the same surface and width, and its first segment snaps to the old road's heading. A segment within 5° of north, south, east or west snaps straight. Hold Alt to draw freely. The **Preset** list in the road options sets common sizes: Highway (18 m) and Country road (9 m gravel) match RWG's roads.
 

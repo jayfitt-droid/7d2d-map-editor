@@ -53,6 +53,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             _prefabs = value;
             RefreshPrefabResults();
+            RefreshPlaced();
             Traders = value.All.Where(p => p.IsTrader && !p.IsPart && !p.IsStreetTile)
                 .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
             if (SelectedTrader is null || !Traders.Contains(SelectedTrader)) PickRandomTrader();
@@ -103,7 +104,7 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBrushTool), nameof(IsStampTool), nameof(IsFlattenTool), nameof(IsNoiseTool),
         nameof(HasRadius), nameof(IsBiomeTool), nameof(IsRadiationTool), nameof(IsWaterTool), nameof(IsRoadTool),
-        nameof(IsPrefabTool), nameof(IsTraderTool), nameof(IsPrefabsTool), nameof(PlacingPrefab), nameof(IsSpawnTool), nameof(IsSelectTool), nameof(ShowSelectionText), nameof(IsTownTool), nameof(ReservesInfoLines), nameof(ShowPrefabCard), nameof(CardPrefab), nameof(CardName), nameof(CardText), nameof(CardHasActions), nameof(CurrentTool),
+        nameof(IsPrefabTool), nameof(IsTraderTool), nameof(IsPrefabsTool), nameof(PlacingPrefab), nameof(IsSpawnTool), nameof(IsSelectTool), nameof(ShowSelectionText), nameof(IsTownTool), nameof(ReservesInfoLines), nameof(CurrentTool),
         nameof(HasSize), nameof(SizeValue), nameof(SizeMin), nameof(SizeMax), nameof(SizeText),
         nameof(HasStrength), nameof(StrengthValue), nameof(StrengthMin), nameof(StrengthText), nameof(CurrentSwatch))]
     private EditorTool _selectedTool = EditorTool.Select;
@@ -231,7 +232,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     // ---- prefab browser ----------------------------------------------------
 
-    public IReadOnlyList<string> PrefabCategories { get; } = ["POIs", "Street tiles", "Parts", "All"];
+    public IReadOnlyList<string> PrefabCategories { get; } = ["POIs", "Street tiles", "Parts", "Favourites", "All"];
     public IReadOnlyList<string> PrefabTiers { get; } = ["Any tier", "Tier 0", "Tier 1", "Tier 2", "Tier 3", "Tier 4", "Tier 5"];
 
     /// <summary>Footprint limits matching RWG's lot sizes (Marker.MarkerSizes), so a POI can be picked for a lot.</summary>
@@ -273,12 +274,43 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     public bool ShowPrefabCard => IsTraderTool ? SelectedTrader is not null : HasPrefabSelection && (IsPrefabTool || IsSelectTool);
 
-    public PrefabInfo? CardPrefab => IsTraderTool ? SelectedTrader : SelectedMapPrefab;
-    public string CardName => IsTraderTool ? SelectedTrader?.Name ?? "" : SelectedMapPrefabName;
-    public string CardText => IsTraderTool ? PlacementText : SelectionText;
+    /// <summary>
+    /// The card shows the prefab picked in the browser instead of the map prefab, as its replacement. Set when a prefab
+    /// is picked while one is selected on the map; cleared by a new map selection, Esc or the card's Back link.
+    /// </summary>
+    [ObservableProperty] private bool _cardShowsPick;
 
-    /// <summary>Raise, lower, replace and delete act on a prefab on the map, so the trader card has none.</summary>
-    public bool CardHasActions => !IsTraderTool;
+    private bool ShowingPick => CardShowsPick && !IsTraderTool && SelectedPrefabInfo is not null;
+
+    public PrefabInfo? CardPrefab => IsTraderTool ? SelectedTrader : ShowingPick ? SelectedPrefabInfo : SelectedMapPrefab;
+    public string CardName => IsTraderTool ? SelectedTrader?.Name ?? "" : ShowingPick ? SelectedPrefabInfo!.Name : SelectedMapPrefabName;
+    public string CardText => IsTraderTool ? PlacementText : ShowingPick ? Summary(SelectedPrefabInfo!) : SelectionText;
+
+    /// <summary>Above the pick's name: what it would replace.</summary>
+    public string CardHeading => ShowingPick ? $"Replace {SelectedMapPrefabName} with:" : "";
+    public bool ShowCardHeading => ShowingPick;
+
+    /// <summary>The tier badge beside the name.</summary>
+    public string CardTierText => CardPrefab is { } p ? p.HasDifficultyTier ? $"Tier {p.DifficultyTier}" : "No tier" : "";
+    public bool ShowCardTier => CardPrefab is not null;
+
+    /// <summary>The card's star: filled when the shown prefab is a favourite.</summary>
+    public bool CardIsFavourite => CardPrefab is { } p && Favourites.Contains(p.Name);
+
+    /// <summary>Turn, raise, lower and delete act on a prefab on the map, so the trader card and a shown pick have none.</summary>
+    public bool CardHasActions => !IsTraderTool && !ShowingPick;
+
+    /// <summary>The turn, raise and lower row: hidden while the card shows a pick (it isn't placed yet).</summary>
+    public bool ShowCardButtons => !ShowingPick;
+
+    /// <summary>Replace swaps the map prefab for the pick; the trader card has no map prefab.</summary>
+    public bool CardHasReplace => !IsTraderTool;
+
+    /// <summary>Size, tags and zoning of a prefab that isn't placed yet.</summary>
+    private static string Summary(PrefabInfo p) =>
+        $"{p.Size.X}×{p.Size.Z} m"
+        + (p.Tags.Count > 0 ? "\nTags: " + string.Join(", ", p.Tags) : "")
+        + (p.Zoning.Count > 0 ? "\nZoning: " + string.Join(", ", p.Zoning) : "");
 
     partial void OnPrefabSearchChanged(string value) => RefreshPrefabResults();
     partial void OnPrefabCategoryChanged(string value) => RefreshPrefabResults();
@@ -298,22 +330,113 @@ public sealed partial class MainViewModel : ObservableObject
                 "POIs" => !p.IsStreetTile && !p.IsPart && !p.IsInternal,
                 "Street tiles" => p.IsStreetTile,
                 "Parts" => p.IsPart,
+                "Favourites" => Favourites.Contains(p.Name),
                 _ => true,
             };
             if (!category || (tier >= 0 && p.DifficultyTier != tier)) return false;
             int big = Math.Max(p.Size.X, p.Size.Z);
             if (sizeIndex is >= 1 and <= 4 && big > limits[sizeIndex]) return false;
             if (sizeIndex == 5 && big <= 100) return false;
-            // Every word must match the name, a tag or a zoning entry.
-            return words.All(w => p.Name.Contains(w, StringComparison.OrdinalIgnoreCase)
-                                  || p.Tags.Any(t => t.Contains(w, StringComparison.OrdinalIgnoreCase))
-                                  || p.Zoning.Any(z => z.Contains(w, StringComparison.OrdinalIgnoreCase)));
+            return MatchesWords(p.Name, p, words);
         }
         PrefabResults = _prefabs.All.Where(Matches).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
         PrefabResultsText = _prefabs.Count == 0
             ? "No prefabs loaded. Set the game folder under Settings."
-            : $"{PrefabResults.Count:N0} of {_prefabs.Count:N0} prefabs";
+            : PrefabCategory == "Favourites" && Favourites.Count == 0
+                ? "No favourites yet. Click the star beside a prefab to add it."
+                : $"{PrefabResults.Count:N0} of {_prefabs.Count:N0} prefabs";
         if (SelectedPrefabInfo is not null && !PrefabResults.Contains(SelectedPrefabInfo)) SelectedPrefabInfo = null;
+    }
+
+    /// <summary>Every search word must match the name, a tag or a zoning entry.</summary>
+    private static bool MatchesWords(string name, PrefabInfo? p, string[] words) =>
+        words.All(w => name.Contains(w, StringComparison.OrdinalIgnoreCase)
+                       || p is not null && (p.Tags.Any(t => t.Contains(w, StringComparison.OrdinalIgnoreCase))
+                                            || p.Zoning.Any(z => z.Contains(w, StringComparison.OrdinalIgnoreCase))));
+
+    // ---- placed prefabs ------------------------------------------------------
+
+    public IReadOnlyList<string> PlacedCategories { get; } = ["POIs", "Street tiles", "Parts", "All"];
+
+    [ObservableProperty] private string _placedSearch = "";
+    [ObservableProperty] private string _placedCategory = "POIs";
+    [ObservableProperty] private IReadOnlyList<PlacedPrefab> _placedResults = [];
+    [ObservableProperty] private string _placedResultsText = "";
+    [ObservableProperty] private PlacedPrefab? _selectedPlaced;
+
+    /// <summary>The open world, for the Placed list; set by the window.</summary>
+    public World? PlacedWorld
+    {
+        get => _placedWorld;
+        set
+        {
+            _placedWorld = value;
+            RefreshPlaced();
+        }
+    }
+
+    private World? _placedWorld;
+    private bool _placedStale = true;
+
+    private bool PlacedTabShown => ShowSidePanel && SidePanelTab == PlacedTab;
+
+    partial void OnPlacedSearchChanged(string value) => RefreshPlaced();
+    partial void OnPlacedCategoryChanged(string value) => RefreshPlaced();
+    partial void OnShowSidePanelChanged(bool value) { if (_placedStale) RefreshPlaced(); }
+    partial void OnSidePanelTabChanged(int value) { if (_placedStale) RefreshPlaced(); }
+
+    /// <summary>Rebuilds the Placed list after an edit, undo or a new world; waits while the tab isn't shown.</summary>
+    public void RefreshPlaced()
+    {
+        _placedStale = true;
+        if (!PlacedTabShown) return;
+        _placedStale = false;
+        var keep = SelectedPlaced?.Instance;
+        if (_placedWorld is not { } world)
+        {
+            PlacedResults = [];
+            PlacedResultsText = "No world open.";
+            return;
+        }
+        string[] words = PlacedSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var rows = new List<PlacedPrefab>();
+        foreach (var p in world.Prefabs)
+        {
+            var info = _prefabs.Find(p.Name);
+            bool category = PlacedCategory switch
+            {
+                // Prefabs missing from the game folder count as POIs, so they can still be found.
+                "POIs" => info is null || !info.IsStreetTile && !info.IsPart,
+                "Street tiles" => info is { IsStreetTile: true },
+                "Parts" => info is { IsPart: true },
+                _ => true,
+            };
+            if (category && MatchesWords(p.Name, info, words)) rows.Add(new PlacedPrefab(p, info));
+        }
+        rows.Sort((a, b) =>
+        {
+            int c = StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name);
+            if (c == 0) c = a.Instance.Position.X.CompareTo(b.Instance.Position.X);
+            return c != 0 ? c : a.Instance.Position.Z.CompareTo(b.Instance.Position.Z);
+        });
+        PlacedResults = rows;
+        PlacedResultsText = $"{rows.Count:N0} of {world.Prefabs.Count:N0} placed";
+        SelectedPlaced = keep is null ? null : rows.FirstOrDefault(r => ReferenceEquals(r.Instance, keep));
+    }
+
+    /// <summary>Starred prefab names. Replaced (not changed) on each toggle, so bindings on it update.</summary>
+    [ObservableProperty] private IReadOnlySet<string> _favourites = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    public void ToggleFavourite(PrefabInfo p)
+    {
+        var set = new HashSet<string>(Favourites, StringComparer.OrdinalIgnoreCase);
+        if (!set.Remove(p.Name)) set.Add(p.Name);
+        Favourites = set;
+    }
+
+    partial void OnFavouritesChanged(IReadOnlySet<string> value)
+    {
+        if (PrefabCategory == "Favourites") RefreshPrefabResults();
     }
 
     public bool CanReplace => SelectedPrefabInfo is not null;
@@ -326,6 +449,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ReplaceLabel));
         // Start a new pick facing north, the way RWG lines POIs up with their street.
         if (value is not null) PrefabRotation = value.RotationToFaceNorth & 3;
+        CardShowsPick = value is not null && HasPrefabSelection;
     }
 
     // ---- trader tool ---------------------------------------------------------
@@ -484,19 +608,12 @@ public sealed partial class MainViewModel : ObservableObject
                 base.OnPropertyChanged(nameof(StrengthValue));
                 base.OnPropertyChanged(nameof(StrengthText));
                 break;
-            case nameof(SelectedTrader):
-                base.OnPropertyChanged(nameof(ShowPrefabCard));
-                base.OnPropertyChanged(nameof(CardPrefab));
-                base.OnPropertyChanged(nameof(CardName));
+            case nameof(SelectedTrader) or nameof(SelectedMapPrefab) or nameof(SelectedMapPrefabName) or nameof(SelectedPrefabInfo)
+                or nameof(CardShowsPick) or nameof(SelectedTool) or nameof(SelectionText) or nameof(PlacementText) or nameof(Favourites):
+                foreach (string card in CardProperties) base.OnPropertyChanged(card);
                 break;
-            case nameof(SelectedMapPrefab):
-                base.OnPropertyChanged(nameof(CardPrefab));
-                break;
-            case nameof(SelectedMapPrefabName):
-                base.OnPropertyChanged(nameof(CardName));
-                break;
-            case nameof(SelectionText) or nameof(PlacementText):
-                base.OnPropertyChanged(nameof(CardText));
+            case nameof(RibbonMode) or nameof(WindowIsShort):
+                foreach (string ribbon in RibbonProperties) base.OnPropertyChanged(ribbon);
                 break;
             case nameof(SelectedBiome) or nameof(RoadType):
                 base.OnPropertyChanged(nameof(CurrentSwatch));
@@ -505,13 +622,58 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    private static readonly string[] CardProperties =
+    [
+        nameof(ShowPrefabCard), nameof(CardPrefab), nameof(CardName), nameof(CardText), nameof(CardHeading), nameof(ShowCardHeading),
+        nameof(CardTierText), nameof(ShowCardTier), nameof(CardHasActions), nameof(CardHasReplace), nameof(ShowCardButtons), nameof(CardIsFavourite),
+    ];
+
     // ---- view ----------------------------------------------------------------
+
+    /// <summary>Full, compact, or compact only while the window is short (Auto). Saved in the settings.</summary>
+    [ObservableProperty] private RibbonMode _ribbonMode = RibbonMode.Auto;
+
+    /// <summary>Set by the window: it is too short for the full ribbon.</summary>
+    [ObservableProperty] private bool _windowIsShort;
+
+    /// <summary>One row of icons with no group names, and fewer reserved lines under the tool options.</summary>
+    public bool IsCompactRibbon => RibbonMode == RibbonMode.Compact || RibbonMode == RibbonMode.Auto && WindowIsShort;
+
+    // The View > Ribbon choices.
+    public bool RibbonAuto { get => RibbonMode == RibbonMode.Auto; set { if (value) RibbonMode = RibbonMode.Auto; } }
+    public bool RibbonFull { get => RibbonMode == RibbonMode.Full; set { if (value) RibbonMode = RibbonMode.Full; } }
+    public bool RibbonCompact { get => RibbonMode == RibbonMode.Compact; set { if (value) RibbonMode = RibbonMode.Compact; } }
+
+    public double RibbonRowHeight => IsCompactRibbon ? 36 : 72;
+    public int TerrainColumns => IsCompactRibbon ? TerrainTools.Count : 3;
+    public int PaintColumns => IsCompactRibbon ? PaintTools.Count : 2;
+    public int BuildColumns => IsCompactRibbon ? BuildTools.Count : 2;
+    public double CurrentSwatchSize => IsCompactRibbon ? 30 : 40;
+
+    /// <summary>The biome and road swatches: two rows, or one in the compact ribbon.</summary>
+    public System.Windows.Controls.Orientation PaletteOrientation =>
+        IsCompactRibbon ? System.Windows.Controls.Orientation.Horizontal : System.Windows.Controls.Orientation.Vertical;
+
+    /// <summary>Invisible lines that keep the tool options strip from jumping as its text changes: six, or three when compact.</summary>
+    public string ReservedInfoText => IsCompactRibbon ? "\n\n" : "\n\n\n\n\n";
+
+    /// <summary>The tool's hint line; the compact ribbon leaves it to the tool's tooltip.</summary>
+    public bool ShowToolHint => !IsCompactRibbon;
+
+    private static readonly string[] RibbonProperties =
+    [
+        nameof(IsCompactRibbon), nameof(RibbonAuto), nameof(RibbonFull), nameof(RibbonCompact), nameof(RibbonRowHeight),
+        nameof(TerrainColumns), nameof(PaintColumns), nameof(BuildColumns), nameof(CurrentSwatchSize), nameof(PaletteOrientation),
+        nameof(ReservedInfoText), nameof(ShowToolHint),
+    ];
 
     [ObservableProperty] private bool _showToolOptions = true;
     [ObservableProperty] private bool _showMiniMap = true;
     [ObservableProperty] private bool _showSidePanel;
 
-    /// <summary>0 = Prefabs, 1 = Issues, 2 = World.</summary>
+    public const int PrefabsTab = 0, PlacedTab = 1, IssuesTab = 2, WorldTab = 3;
+
+    /// <summary>The side panel's tab: <see cref="PrefabsTab"/>, <see cref="PlacedTab"/>, <see cref="IssuesTab"/> or <see cref="WorldTab"/>.</summary>
     [ObservableProperty] private int _sidePanelTab;
 
     [ObservableProperty] private string _worldSizeText = "";
@@ -547,6 +709,31 @@ public sealed partial class MainViewModel : ObservableObject
 public sealed record RoadPreset(string Name, RoadType Type, double Width)
 {
     public override string ToString() => $"{Name}  ({Width:0.#} m)";
+}
+
+public enum RibbonMode
+{
+    /// <summary>Compact while the window is short, full otherwise.</summary>
+    Auto,
+    Full,
+    Compact,
+}
+
+/// <summary>A row of the Placed list: a prefab in the world, with its tier and position.</summary>
+public sealed record PlacedPrefab(PrefabInstance Instance, PrefabInfo? Info)
+{
+    public string Name => Instance.Name;
+
+    public string Detail
+    {
+        get
+        {
+            var at = Instance.Position;
+            string where = $"{(at.X >= 0 ? $"{at.X} E" : $"{-at.X} W")}, {(at.Z >= 0 ? $"{at.Z} N" : $"{-at.Z} S")}";
+            string tier = Info is null ? "not in the game folder" : Info.HasDifficultyTier ? $"tier {Info.DifficultyTier}" : "no tier";
+            return $"{where}  ·  {tier}";
+        }
+    }
 }
 
 public sealed record Swatch(string Label, uint Color, BiomeDefinition? Biome, RoadType? Road);

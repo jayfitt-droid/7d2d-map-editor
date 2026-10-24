@@ -67,6 +67,9 @@ public sealed record PrefabInfo(
     /// <summary>RWG's POI budget cost: (TotalVertices + 50000) / 100000, in whole points.</summary>
     public float DensityScore { get; init; }
 
+    /// <summary>Whether the sidecar sets DifficultyTier; without it the game uses tier 0.</summary>
+    public bool HasDifficultyTier { get; init; } = true;
+
     /// <summary>The sidecar's TraderArea flag: the prefab is a trader compound.</summary>
     public bool TraderArea { get; init; }
 
@@ -174,7 +177,7 @@ public sealed class PrefabLibrary
     {
         Int3? size = null;
         int yOffset = 0, rotation = 0, tier = 0;
-        bool trader = false;
+        bool trader = false, hasTier = false;
         IReadOnlyList<string> themeTags = [];
         int themeRepeat = 300, duplicateRepeat = 1000;
         float density = 0;
@@ -199,7 +202,7 @@ public sealed class PrefabLibrary
                 case "PrefabSize": size = ParseInt3(value); break;
                 case "YOffset": yOffset = ParseInt(value); break;
                 case "RotationToFaceNorth": rotation = ParseInt(value); break;
-                case "DifficultyTier": tier = ParseInt(value); break;
+                case "DifficultyTier": tier = ParseInt(value); hasTier = true; break;
                 case "Tags": tags = SplitList(value); break;
                 case "Zoning": zoning = SplitList(value); break;
                 case "ThemeTags": themeTags = SplitList(value.Replace(" ", "")); break;
@@ -220,6 +223,7 @@ public sealed class PrefabLibrary
             Zoning = zoning,
             Markers = ReadMarkers(props),
             TraderArea = trader,
+            HasDifficultyTier = hasTier,
             ThemeTags = themeTags,
             ThemeRepeatDistance = themeRepeat,
             DuplicateRepeatDistance = duplicateRepeat,

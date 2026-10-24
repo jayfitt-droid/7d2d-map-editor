@@ -11,6 +11,7 @@
         <local:PreviewImageConverter x:Key="PreviewImage" />
         <local:SeverityGlyphConverter x:Key="SeverityGlyph" />
         <local:SeverityBrushConverter x:Key="SeverityBrush" />
+        <local:FavouriteStarConverter x:Key="FavouriteStar" />
 
         <!-- A line icon from Icons.cs, drawn in the text colour of the control it sits in. -->
         <Style x:Key="IconPath" TargetType="Path">
@@ -31,6 +32,23 @@
             <Setter Property="HorizontalAlignment" Value="Center" />
             <Setter Property="Margin" Value="0,4,0,0" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsCompactRibbon}" Value="True">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- The words under a ribbon action's icon (Validate, Export); hidden in the compact ribbon. -->
+        <Style x:Key="RibbonButtonText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,4,0,0" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsCompactRibbon}" Value="True">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
 
         <!-- A prefab's preview picture (Content is the prefab), or a "No preview" box when the game ships none. -->
@@ -104,6 +122,17 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <!-- A ribbon action (Layers, Validate, Export): a flat button that fits one 36 px row in the compact ribbon. -->
+        <Style x:Key="RibbonAction" TargetType="ButtonBase" BasedOn="{StaticResource FlatButton}">
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsCompactRibbon}" Value="True">
+                    <Setter Property="Padding" Value="6" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
 
         <!-- A ribbon group of tools: a list of square icon buttons, the selected one outlined in the accent colour. -->

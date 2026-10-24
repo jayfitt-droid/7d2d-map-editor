@@ -4,7 +4,7 @@
         xmlns:map="clr-namespace:MapEditor.App.Map"
         xmlns:local="clr-namespace:MapEditor.App"
         xmlns:ops="clr-namespace:MapEditor.Core.Ops;assembly=MapEditor.Core"
-        Title="7D2D Map Editor" Width="1400" Height="900" MinWidth="1000" MinHeight="600">
+        Title="7D2D Map Editor" Width="1400" Height="900" MinWidth="1000" MinHeight="480">
     <Window.Resources>
         <!-- One labelled field in the tool options strip. -->
         <Style x:Key="OptionLabel" TargetType="TextBlock">
@@ -83,6 +83,13 @@
                     <MenuItem Header="Zoom _In" InputGestureText="+" Click="ZoomIn_Click" />
                     <MenuItem Header="Zoom _Out" InputGestureText="-" Click="ZoomOut_Click" />
                     <Separator />
+                    <MenuItem Header="_Ribbon">
+                        <MenuItem Header="_Automatic" IsCheckable="True" IsChecked="{Binding RibbonAuto}"
+                                  ToolTip="Compact while the window is short, full otherwise" />
+                        <MenuItem Header="_Full" IsCheckable="True" IsChecked="{Binding RibbonFull}" />
+                        <MenuItem Header="_Compact" IsCheckable="True" IsChecked="{Binding RibbonCompact}"
+                                  ToolTip="One row of icons; hover a tool for its name and how to use it" />
+                    </MenuItem>
                     <MenuItem Header="_Tool Options" IsCheckable="True" IsChecked="{Binding ShowToolOptions}" />
                     <MenuItem Header="_Mini Map" IsCheckable="True" IsChecked="{Binding ShowMiniMap}" />
                     <MenuItem Header="_Side Panel" IsCheckable="True" IsChecked="{Binding ShowSidePanel}" />
@@ -118,8 +125,17 @@
         </StackPanel>
 
         <!-- The ribbon: tool groups with their names underneath. -->
-        <Border DockPanel.Dock="Top" Padding="10,6,10,4" BorderThickness="0,1,0,1"
-                BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
+        <Border DockPanel.Dock="Top" BorderThickness="0,1,0,1" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Padding" Value="10,6,10,4" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsCompactRibbon}" Value="True">
+                            <Setter Property="Padding" Value="10,3" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <DockPanel>
                 <ToggleButton DockPanel.Dock="Right" VerticalAlignment="Bottom" Style="{StaticResource FlatButton}" Padding="4"
                               IsChecked="{Binding ShowToolOptions}" ToolTip="Show or hide the tool options"
@@ -129,7 +145,7 @@
                 <StackPanel Orientation="Horizontal">
                     <StackPanel>
                         <ListBox Style="{StaticResource ToolGroup}" ItemsSource="{Binding NavigateTools}" SelectedValue="{Binding SelectedTool}"
-                                 AutomationProperties.Name="Navigate" Height="72" VerticalContentAlignment="Top" />
+                                 AutomationProperties.Name="Navigate" Height="{Binding RibbonRowHeight}" VerticalContentAlignment="Top" />
                         <TextBlock Text="Navigate" Style="{StaticResource RibbonLabel}" />
                     </StackPanel>
                     <Border Style="{StaticResource RibbonDivider}" />
@@ -137,7 +153,7 @@
                         <ListBox Style="{StaticResource ToolGroup}" ItemsSource="{Binding TerrainTools}" SelectedValue="{Binding SelectedTool}"
                                  AutomationProperties.Name="Terrain tools">
                             <ListBox.ItemsPanel>
-                                <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>
+                                <ItemsPanelTemplate><UniformGrid Columns="{Binding TerrainColumns}" /></ItemsPanelTemplate>
                             </ListBox.ItemsPanel>
                         </ListBox>
                         <TextBlock Text="Terrain" Style="{StaticResource RibbonLabel}" />
@@ -147,7 +163,7 @@
                         <ListBox Style="{StaticResource ToolGroup}" ItemsSource="{Binding PaintTools}" SelectedValue="{Binding SelectedTool}"
                                  AutomationProperties.Name="Paint tools">
                             <ListBox.ItemsPanel>
-                                <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
+                                <ItemsPanelTemplate><UniformGrid Columns="{Binding PaintColumns}" /></ItemsPanelTemplate>
                             </ListBox.ItemsPanel>
                         </ListBox>
                         <TextBlock Text="Paint" Style="{StaticResource RibbonLabel}" />
@@ -157,7 +173,7 @@
                         <ListBox Style="{StaticResource ToolGroup}" ItemsSource="{Binding BuildTools}" SelectedValue="{Binding SelectedTool}"
                                  AutomationProperties.Name="Build tools">
                             <ListBox.ItemsPanel>
-                                <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
+                                <ItemsPanelTemplate><UniformGrid Columns="{Binding BuildColumns}" /></ItemsPanelTemplate>
                             </ListBox.ItemsPanel>
                         </ListBox>
                         <TextBlock Text="Build" Style="{StaticResource RibbonLabel}" />
@@ -166,13 +182,14 @@
 
                     <!-- Palette: the current biome or road surface, then every biome and both road surfaces. -->
                     <StackPanel>
-                        <StackPanel Orientation="Horizontal" Height="72">
-                            <Grid Width="40" Height="40" Margin="2,0,8,0" VerticalAlignment="Top" ToolTip="{Binding CurrentSwatch.Label}">
+                        <StackPanel Orientation="Horizontal" Height="{Binding RibbonRowHeight}">
+                            <Grid Width="{Binding CurrentSwatchSize}" Height="{Binding CurrentSwatchSize}" Margin="2,0,8,0" VerticalAlignment="Top"
+                                  ToolTip="{Binding CurrentSwatch.Label}">
                                 <Ellipse Stroke="{DynamicResource AccentFillColorDefaultBrush}" StrokeThickness="2" />
                                 <Ellipse Margin="4" Fill="{Binding CurrentSwatch.Color, Converter={StaticResource RgbToBrush}}"
                                          Stroke="{DynamicResource ControlStrokeColorSecondaryBrush}" />
                             </Grid>
-                            <StackPanel>
+                            <StackPanel Orientation="{Binding PaletteOrientation}">
                                 <ItemsControl ItemsSource="{Binding BiomeChoices}" Focusable="False">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
@@ -205,8 +222,8 @@
 
                     <!-- Layers: a drop-down of what the map shows. -->
                     <StackPanel>
-                        <Grid Height="72">
-                            <ToggleButton x:Name="LayersButton" Style="{StaticResource FlatButton}" VerticalAlignment="Top" Padding="10,8"
+                        <Grid Height="{Binding RibbonRowHeight}">
+                            <ToggleButton x:Name="LayersButton" Style="{StaticResource RibbonAction}"
                                           ToolTip="Choose what the map shows" AutomationProperties.Name="Layers">
                                 <Path Data="{x:Static local:Icons.Layers}" Style="{StaticResource IconPath}" Width="24" Height="24" />
                             </ToggleButton>
@@ -236,19 +253,19 @@
                     <Border Style="{StaticResource RibbonDivider}" />
 
                     <StackPanel>
-                        <StackPanel Orientation="Horizontal" Height="72">
-                            <Button Style="{StaticResource FlatButton}" VerticalAlignment="Top" Command="{x:Static local:MainWindow.ValidateCommand}"
-                                    ToolTip="Check the world for problems (F7)" Padding="8,6">
+                        <StackPanel Orientation="Horizontal" Height="{Binding RibbonRowHeight}">
+                            <Button Style="{StaticResource RibbonAction}" Command="{x:Static local:MainWindow.ValidateCommand}"
+                                    ToolTip="Validate: check the world for problems (F7)" AutomationProperties.Name="Validate">
                                 <StackPanel>
                                     <Path Data="{x:Static local:Icons.Validate}" Style="{StaticResource IconPath}" Width="24" Height="24" />
-                                    <TextBlock Text="Validate" FontSize="12" Margin="0,4,0,0" HorizontalAlignment="Center" />
+                                    <TextBlock Text="Validate" Style="{StaticResource RibbonButtonText}" />
                                 </StackPanel>
                             </Button>
-                            <Button Style="{StaticResource FlatButton}" VerticalAlignment="Top" Command="{x:Static local:MainWindow.ExportCommand}"
-                                    ToolTip="Write a world folder the game can load (Ctrl+E)" Padding="8,6">
+                            <Button Style="{StaticResource RibbonAction}" Command="{x:Static local:MainWindow.ExportCommand}"
+                                    ToolTip="Export: write a world folder the game can load (Ctrl+E)" AutomationProperties.Name="Export">
                                 <StackPanel>
                                     <Path Data="{x:Static local:Icons.Export}" Style="{StaticResource IconPath}" Width="24" Height="24" />
-                                    <TextBlock Text="Export" FontSize="12" Margin="0,4,0,0" HorizontalAlignment="Center" />
+                                    <TextBlock Text="Export" Style="{StaticResource RibbonButtonText}" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -382,7 +399,7 @@
 
                     <!-- One of these at a time, over an invisible six lines that hold the strip's height while the text changes. -->
                     <Grid>
-                        <TextBlock Text="&#10;&#10;&#10;&#10;&#10;" Style="{StaticResource HintText}" Margin="0,4,0,0" Opacity="0" IsHitTestVisible="False"
+                        <TextBlock Text="{Binding ReservedInfoText}" Style="{StaticResource HintText}" Margin="0,4,0,0" Opacity="0" IsHitTestVisible="False"
                                    Visibility="{Binding ReservesInfoLines, Converter={StaticResource BoolToVisibility}}" />
                         <TextBlock Text="{Binding TownText}" Style="{StaticResource HintText}" Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                    Visibility="{Binding IsTownTool, Converter={StaticResource BoolToVisibility}}" />
@@ -391,7 +408,8 @@
                         <TextBlock Text="{Binding SelectionText}" Style="{StaticResource HintText}" Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                    Visibility="{Binding ShowSelectionText, Converter={StaticResource BoolToVisibility}}" />
                     </Grid>
-                    <TextBlock Text="{Binding CurrentTool.Hint}" Style="{StaticResource HintText}" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding CurrentTool.Hint}" Style="{StaticResource HintText}" Margin="0,4,0,0"
+                               Visibility="{Binding ShowToolHint, Converter={StaticResource BoolToVisibility}}" />
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -495,11 +513,53 @@
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel>
+                                            <Button DockPanel.Dock="Left" Style="{StaticResource FlatButton}" Padding="2,0" Margin="-4,0,4,0" Focusable="False"
+                                                    Click="FavouriteRow_Click" ToolTip="Favourite (find it under Favourites)" AutomationProperties.Name="Favourite">
+                                                <TextBlock>
+                                                    <TextBlock.Text>
+                                                        <MultiBinding Converter="{StaticResource FavouriteStar}">
+                                                            <Binding Path="Name" />
+                                                            <Binding Path="DataContext.Favourites" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                                                        </MultiBinding>
+                                                    </TextBlock.Text>
+                                                    <TextBlock.Foreground>
+                                                        <MultiBinding Converter="{StaticResource FavouriteStar}" ConverterParameter="brush">
+                                                            <Binding Path="Name" />
+                                                            <Binding Path="DataContext.Favourites" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                                                        </MultiBinding>
+                                                    </TextBlock.Foreground>
+                                                </TextBlock>
+                                            </Button>
                                             <TextBlock DockPanel.Dock="Right" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="6,0,0,0">
                                                 <Run Text="{Binding Size.X, Mode=OneWay}" />×<Run Text="{Binding Size.Z, Mode=OneWay}" />
                                             </TextBlock>
                                             <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                                         </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </TabItem>
+                    <TabItem Header="P_laced">
+                        <DockPanel Margin="0,8,0,0">
+                            <StackPanel DockPanel.Dock="Top">
+                                <TextBox Text="{Binding PlacedSearch, UpdateSourceTrigger=PropertyChanged, Delay=200}"
+                                         ToolTip="Search the prefabs in this world by name, tag or zone" AutomationProperties.Name="Search placed prefabs" />
+                                <ComboBox ItemsSource="{Binding PlacedCategories}" SelectedItem="{Binding PlacedCategory}" Margin="0,6,0,0"
+                                          HorizontalAlignment="Stretch" AutomationProperties.Name="Placed category" />
+                                <TextBlock Text="{Binding PlacedResultsText}" Style="{StaticResource HintText}" Margin="0,6,0,4" />
+                            </StackPanel>
+                            <ListBox x:Name="PlacedList" ItemsSource="{Binding PlacedResults}" SelectedItem="{Binding SelectedPlaced}"
+                                     MouseDoubleClick="Placed_DoubleClick" KeyDown="Placed_KeyDown" AutomationProperties.Name="Placed prefabs"
+                                     ToolTip="Double-click or press Enter to find it on the map and select it"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Detail}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
@@ -558,29 +618,63 @@
                     Visibility="{Binding ShowPrefabCard, Converter={StaticResource BoolToVisibility}}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
+                        <TextBlock Text="{Binding CardHeading}" Style="{StaticResource HintText}" TextTrimming="CharacterEllipsis" Margin="0,0,0,2"
+                                   Visibility="{Binding ShowCardHeading, Converter={StaticResource BoolToVisibility}}" />
                         <DockPanel>
                             <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="✕" Padding="6,0"
-                                    Visibility="{Binding CardHasActions, Converter={StaticResource BoolToVisibility}}"
-                                    ToolTip="Deselect (Esc)" AutomationProperties.Name="Deselect" Click="PrefabCardClose_Click" />
+                                    Visibility="{Binding CardHasReplace, Converter={StaticResource BoolToVisibility}}"
+                                    ToolTip="Deselect" AutomationProperties.Name="Deselect" Click="PrefabCardClose_Click" />
+                            <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Padding="4,0" Click="CardFavourite_Click"
+                                    Visibility="{Binding ShowCardTier, Converter={StaticResource BoolToVisibility}}"
+                                    ToolTip="Favourite (find it under Favourites in the prefab list)" AutomationProperties.Name="Favourite">
+                                <TextBlock>
+                                    <TextBlock.Text>
+                                        <MultiBinding Converter="{StaticResource FavouriteStar}">
+                                            <Binding Path="CardName" />
+                                            <Binding Path="Favourites" />
+                                        </MultiBinding>
+                                    </TextBlock.Text>
+                                    <TextBlock.Foreground>
+                                        <MultiBinding Converter="{StaticResource FavouriteStar}" ConverterParameter="brush">
+                                            <Binding Path="CardName" />
+                                            <Binding Path="Favourites" />
+                                        </MultiBinding>
+                                    </TextBlock.Foreground>
+                                </TextBlock>
+                            </Button>
+                            <Border DockPanel.Dock="Right" CornerRadius="4" Padding="6,1" Margin="6,0,4,0" VerticalAlignment="Center"
+                                    Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                    Visibility="{Binding ShowCardTier, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="{Binding CardTierText}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                            </Border>
                             <TextBlock Text="{Binding CardName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                         </DockPanel>
                         <ContentControl Content="{Binding CardPrefab}" Style="{StaticResource PrefabPreview}"
                                         MaxHeight="200" Margin="0,6,0,0" />
                         <TextBlock Text="{Binding CardText}" Style="{StaticResource HintText}" Margin="0,6,0,0"
                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                        <UniformGrid Columns="4" Margin="0,8,0,0">
+                        <UniformGrid Columns="4" Margin="0,8,0,0"
+                                     Visibility="{Binding ShowCardButtons, Converter={StaticResource BoolToVisibility}}">
                             <Button Content="↺ Q" ToolTip="Turn a quarter counter-clockwise" Margin="0,0,3,0" Padding="2,4" Click="PrefabTurnLeft_Click" />
                             <Button Content="↻ E" ToolTip="Turn a quarter clockwise" Margin="0,0,3,0" Padding="2,4" Click="PrefabTurnRight_Click" />
                             <Button Content="▲ PgUp" IsEnabled="{Binding CardHasActions}" ToolTip="Raise one block (the ground stays)" Margin="0,0,3,0" Padding="2,4" Click="PrefabRaise_Click" />
                             <Button Content="▼ PgDn" IsEnabled="{Binding CardHasActions}" ToolTip="Lower one block (the ground stays)" Padding="2,4" Click="PrefabLower_Click" />
                         </UniformGrid>
                         <Button Margin="0,4,0,0" HorizontalAlignment="Stretch" IsEnabled="{Binding CanReplace}" Click="PrefabReplace_Click"
-                                Visibility="{Binding CardHasActions, Converter={StaticResource BoolToVisibility}}"
+                                Visibility="{Binding CardHasReplace, Converter={StaticResource BoolToVisibility}}"
                                 ToolTip="Pick a prefab in the browser, then swap it in here, facing the same way">
                             <TextBlock Text="{Binding ReplaceLabel}" TextTrimming="CharacterEllipsis" />
                         </Button>
                         <Button Content="Delete  (Del)" Margin="0,4,0,0" HorizontalAlignment="Stretch" Click="PrefabDelete_Click"
                                 Visibility="{Binding CardHasActions, Converter={StaticResource BoolToVisibility}}" />
+                        <Button Style="{StaticResource FlatButton}" Margin="0,4,0,0" HorizontalAlignment="Left" Padding="4,2" Click="PrefabCardBack_Click"
+                                Visibility="{Binding ShowCardHeading, Converter={StaticResource BoolToVisibility}}"
+                                ToolTip="Show the prefab on the map again (Esc drops the pick)" AutomationProperties.Name="Back to the map prefab">
+                            <TextBlock TextTrimming="CharacterEllipsis" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}">
+                                ← Back to <Run Text="{Binding SelectedMapPrefabName, Mode=OneWay}" />
+                            </TextBlock>
+                        </Button>
                     </StackPanel>
                 </ScrollViewer>
             </Border>

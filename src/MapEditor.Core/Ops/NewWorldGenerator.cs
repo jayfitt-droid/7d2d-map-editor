@@ -19,8 +19,9 @@ public enum EdgeStyle
 /// <param name="BaseHeight">Starting ground height in metres (RWG uses 35; water sits at 30).</param>
 /// <param name="NoiseAmplitude">Peak height variation from noise, in metres (0 for flat).</param>
 /// <param name="NoiseScale">Size of noise features in metres.</param>
-/// <param name="Biome">biomes.png colour for the whole map.</param>
+/// <param name="Biome">biomes.png colour for the whole map, when there is no <paramref name="BiomePlan"/>.</param>
 /// <param name="Edges">North, east, south, west.</param>
+/// <param name="BiomePlan">A generated layout of several biomes (RWG's method), from the same seed.</param>
 public sealed record NewWorldOptions(
     string Name,
     int Size,
@@ -29,7 +30,8 @@ public sealed record NewWorldOptions(
     float NoiseScale = 600,
     int Seed = 1,
     uint Biome = 0x004000,
-    EdgeStyle[]? Edges = null);
+    EdgeStyle[]? Edges = null,
+    BiomePlan? BiomePlan = null);
 
 /// <summary>Creates a blank world ready for editing.</summary>
 public static class NewWorldGenerator
@@ -57,7 +59,9 @@ public static class NewWorldGenerator
             }
         });
 
-        world.Biomes = new IndexedLayer(new Grid<byte>(size / 8, size / 8), [o.Biome]);
+        world.Biomes = o.BiomePlan is { } plan
+            ? GenerateBiomes(size, plan, stamps, o.Seed)
+            : new IndexedLayer(new Grid<byte>(size / 8, size / 8), [o.Biome]);
         world.Roads = new Grid<byte>(size, size);
         world.Water = new Grid<byte>(size, size);
         world.Radiation = new Grid<byte>(size / 32, size / 32);
@@ -76,6 +80,17 @@ public static class NewWorldGenerator
         if (levelTemplate is not null)
             world.ExtraFiles[IO.WorldFiles.Level] = IO.LevelFile.WithNewGuid(levelTemplate);
         return world;
+    }
+
+    /// <summary>Plans and paints a biome layout; the same seed gives the same map.</summary>
+    public static IndexedLayer GenerateBiomes(int size, BiomePlan plan, StampLibrary stamps, int seed)
+    {
+        // Separate streams from the terrain noise and borders, as RWG uses its own for the biome paint.
+        var tiles = BiomeLayout.PlanTiles(size, plan.Shares, plan.Layout, new Random(seed + 1));
+        var paint = new Random(seed + 3);
+        var fillers = stamps.WithPrefix("filler_biome");
+        var filler = fillers.Count == 0 ? null : stamps.Get(fillers[paint.Next(fillers.Count)]);
+        return BiomeLayout.Paint(size, plan.Shares, tiles, filler, paint);
     }
 
     /// <summary>
