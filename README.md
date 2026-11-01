@@ -10,6 +10,8 @@ Download `7D2DMapEditor-win-Setup.exe` from the [latest release](https://github.
 
 It needs Windows 10 or 11 (64-bit) and a copy of 7 Days to Die (v3.x).
 
+What changed in each version is in the [changelog](CHANGELOG.md).
+
 ## First run
 
 The editor looks for the game through Steam. If it can't find it, use **Settings > Game Folder** and pick the folder that contains `Data`. Biome colours, prefabs and stamps load from there.
