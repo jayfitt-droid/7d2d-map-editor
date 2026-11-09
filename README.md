@@ -12,6 +12,8 @@ It needs Windows 10 or 11 (64-bit) and a copy of 7 Days to Die (v3.x).
 
 What changed in each version is in the [changelog](CHANGELOG.md).
 
+The [user manual](docs/USER-MANUAL.md) explains every tool and each stage of the Generate panel.
+
 ## First run
 
 The editor looks for the game through Steam. If it can't find it, use **Settings > Game Folder** and pick the folder that contains `Data`. Biome colours, prefabs and stamps load from there.
