@@ -32,6 +32,8 @@ The editor writes a world folder that the game loads directly. The game does not
 
 The editor reads stamps, prefabs and biome colours from your copy of the game. It does not include game files.
 
+The editor also reads prefabs from your mods and from `%APPDATA%\7DaysToDie\LocalPrefabs`. The game's prefab editor saves your prefabs in that folder. If two prefabs have the same name, the editor uses the prefab from `LocalPrefabs`, as the game does.
+
 ## 2. Before you start
 
 You need:
@@ -74,6 +76,15 @@ On a short window, the ribbon becomes one row of icons. To keep the ribbon full 
 - Press **Home** to see the whole map.
 - Drag with the right mouse button to move the map. This works with every tool.
 
+### Find a placed prefab
+
+The **Placed** tab lists every POI, street tile and part in your world.
+
+1. Click the **Placed** tab in the side panel.
+2. Type a name in the search box. You can also filter by type. The map shows a ring around each prefab that matches.
+3. Click a row to zoom to its prefab. Each row shows the biome at the centre of the prefab.
+4. To select the prefab, double-click its row or press Enter.
+
 ## 4. Worlds and projects
 
 ### Make a new world
@@ -83,10 +94,18 @@ On a short window, the ribbon becomes one row of icons. To keep the ribbon full 
 3. Under **Biomes**, select one of these:
    - **One biome** paints one biome on the whole map.
    - **All biomes (generated layout)** makes a layout of all the biomes, as the game does. Select where the biomes start: forest or wasteland in the middle, a ring, two rings, or a line. Then set the **Share of the map** for each biome.
-4. Set the **Edges**.
+4. Under **Land shape**, select one of these:
+   - **Land to the edges** puts land on all of the map. Then set the **Edges**.
+   - **One island** makes one island with ocean on all sides.
+   - **Several islands** makes a group of islands with ocean between them.
+   - **Peninsula** makes land that touches one edge. Select the edge in **Joined to**.
+
+   For an island or a peninsula, set **Land** (the share of the map that is land) and **Rough coast**. For several islands, also set **Islands**.
 5. Click **Create**. The editor opens the Generate panel at stage 1.
 
 The same seed always gives the same biome layout. A biome in the middle stays away from the map edges, so it can get a little less than its share.
+
+On an island world, the share of each biome is a share of the land. The coast seed comes from the world seed.
 
 ### Open a world
 
@@ -315,12 +334,16 @@ The stage needs a biome map. If the world has no biome map, paint biomes first.
 
 - **Plains**, **Hills** and **Mountains** set how much of each type the map gets. The editor compares the three numbers. The game uses 4, 4 and 2.
 - **Per biome**: tick a biome to give it its own numbers. A wasteland that you do not tick gets no mountains, as in the game.
-- **Edges**: for the north, east, south and west edges, select **Land** (rough raised land), **Water** (ocean) or **None** (no change). The editor makes the edges again only when you generate the whole map.
+- **Land shape**: the shape of the land, as in **New World**. **Coast seed** and its **Re-roll** button change only the coast. The terrain seed does not change. For an island or a peninsula, the editor does not make edges.
+- **Edges** (only for **Land to the edges**): select an edge type for the north, east, south and west edges. The types are **Land** (rough raised land), **Water** (ocean) and **None** (no change). The editor makes the edges again only when you generate the whole map.
+- **Plan the biomes again for this land**: the editor makes the biome layout from **New World** again, for the land shape. The editor ticks this setting when you change the shape. It replaces the biomes that you painted. Undo puts them back. This setting shows only for a world with a generated biome layout from **New World**.
 - **Where**:
   - **Whole map** makes all of the terrain again.
   - **Only an area** makes only the tiles in a rectangle. Click **Select area**, then drag on the map. The new tiles blend into the land around them. Prefabs and roads do not move.
 - **Tile types painted by hand**: select a type and click **Paint**. Then paint 256 m tiles on the map. Shift+drag removes painted tiles. **Clear** removes all painted tiles. When you generate, your painted tiles keep their type. The editor fills the other tiles.
-- **Show the last run's tile types** colours each tile by the type that the last run gave it.
+- **Show the last run's tile types** colours each tile by the type that the last run gave it. This setting is off by default.
+
+On an island or a peninsula, sea tiles get no plains, hills or mountains.
 
 Click **Generate** to make the terrain.
 
@@ -380,6 +403,8 @@ This stage presses lakes, rivers, canyons and craters into the ground. It uses t
 
 A crater or canyon that touches water fills with water, as in the game.
 
+No feature starts in the sea of an island or a peninsula.
+
 ### Stage 4: Highways
 
 This stage connects the towns with asphalt highways. It uses the towns that are in the world when it runs. These can come from stage 2, from the Town tool, or from an opened world.
@@ -391,9 +416,16 @@ The game's rules connect each town exit to the nearest of its three nearest town
 - **Route wiggle**: how much the seed bends the routes, in %. Set 0 to get the game's exact routes.
 - **Longest causeway over water**: the longest crossing over water, in metres. A highway goes around wider water.
 - **Join every town**: after the game's rules, the editor connects a group of towns that has no road to the other towns.
+- **Bridge islands** (with **Join every town**): the editor connects towns on different islands with bridges. It uses the game's bridge sections, `rwg_bridge_tile_01` and `rwg_bridge_end_01`. Each bridge goes straight north–south or east–west. A highway goes from each town to the bridge.
+- **Longest bridge over water**: the maximum length of water that a bridge crosses, in metres.
+- **Shortcut bridges**: the editor first connects all the islands. Then it adds a direct bridge between two islands if the route between them crosses three or more bridges.
 - **Allow a second road between two towns**: the game can connect two towns with two highways side by side. Off: one highway connects two towns.
 
-**Re-roll** gives new routes. **Remove all** removes the roads that this stage made and puts back the ground under them.
+The bottom of each bridge is 5 m above the water, so boats can go under it. The editor puts a footing under each row of pillars. The footing stays under the water.
+
+If two islands have no straight crossing within the longest bridge, the editor does not connect them. The status line tells you. No other road connects to a highway within 80 m of a bridge.
+
+**Re-roll** gives new routes. **Remove all** removes the roads that this stage made and puts back the ground under them. **Remove all** also removes the bridges and their footings.
 
 ### Stage 5: Wilderness POIs and gravel roads
 
@@ -499,6 +531,8 @@ Press **F1** in the editor to see this list.
 | Word | Meaning |
 |---|---|
 | **Biome** | An area of one type: forest, burnt forest, desert, snow or wasteland. |
+| **Footing** | Ground that the editor raises under the pillars of a bridge. |
+| **Land shape** | The outline of the land: land to the edges, one island, several islands or a peninsula. |
 | **POI** | A point of interest: a building or other place that a player can visit. |
 | **Prefab** | An object from the game that you can put on the map: a POI, a street tile or a part. |
 | **Project** | A `.7dmap` file. It keeps the world and all of your settings. |
