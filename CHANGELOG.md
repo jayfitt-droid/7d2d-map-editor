@@ -2,6 +2,28 @@
 
 What changed in each release of 7D2D Map Editor, newest first. Downloads are on the [releases page](https://github.com/jayfitt-droid/7d2d-map-editor/releases). Installed copies update from **Help > Check for Updates**.
 
+## v2.0.0-beta.3 (2026-11-11)
+
+### New
+
+- **Land shapes.** A new world can be one island, several islands or a peninsula. Select the shape in **New World** under **Land shape**, or in stage 1 (Terrain). Set the land share, the coast roughness, the number of islands and the peninsula edge. The coast has its own seed. The land goes down from a beach to a sea floor 12 m below the water. The editor fills the sea with water to 30 m.
+- **Biome layouts fit the land.** On an island world, the share of each biome is a share of the land. Biomes also grow across the sea to other islands. The project keeps the biome layout. If you change the land shape, stage 1 can make the biome layout again for the new land.
+- **Bridges between islands.** In stage 4 (Highways), tick **Bridge islands**. The editor then connects towns on different islands with the game's bridge sections. Each bridge goes straight north–south or east–west. The water stays open under the bridge, so boats can go under it. **Longest bridge** sets the maximum length (1,500 m by default).
+- **Shortcut bridges.** This setting adds a direct bridge between two islands if the route between them crosses three or more bridges.
+- **Your own prefabs.** The editor now loads the prefabs in `%APPDATA%\7DaysToDie\LocalPrefabs`. The game's prefab editor saves prefabs in this folder. If a prefab in this folder has the same name as a game prefab or a mod prefab, the editor uses your prefab. The game does the same.
+- **Placed search on the map.** When the **Placed** tab shows and the search box has text, the map shows a ring around each prefab that matches. Click a row to zoom to its prefab. To also select the prefab, double-click the row or press Enter. Each row shows the biome at the centre of the prefab.
+
+### Changes
+
+- In stage 1 (Terrain), **Show the last run's tile types** is now off by default.
+- Stage 1 (Terrain) puts no plains, hills or mountains on sea tiles.
+- Stage 3 (Features) does not start a lake, river, canyon or crater in the sea of a land shape.
+- No gravel road or country road connects to a highway within 80 m of a bridge.
+- **Validate** does not flag a bridge as under water. For the game's bridge sections, it compares the road with the deck, not with the ground.
+- The side panel shows by default. The editor remembers if you close it.
+
+A project with bridges does not open in v2.0.0-beta.1 or earlier.
+
 ## v2.0.0-beta.1 (2026-11-09)
 
 This is a beta for testers. It is a pre-release, so copies of v1.2.1 do not get it as an update. A beta copy gets each later beta, and then v2.0.0.
@@ -34,67 +56,67 @@ This is a beta for testers. It is a pre-release, so copies of v1.2.1 do not get 
 
 ### Fixes
 
-- **Worlds saved in the game's own world editor now open at the right heights.** The game's editor stores each POI's height in a different way from the world generator. The map editor read them the generator's way, so after a save in the game's editor, Review listed hundreds of POIs that "don't meet the road" on a map nobody had changed. A POI moved in such a world could also end up buried in game. Both are fixed. Navezgane and the Pregen maps, which use the same format, are read correctly too, and each prefab is saved back in the format it came in.
-- **Fewer road warnings.** Review now flags a POI or street tile only when the road beside it is more than 1 m (one block) off its ground. The world generator leaves many one-block steps, and players and vehicles get over them. The same limit applies when you place a prefab.
+- **Worlds that you saved in the game's own world editor now open at the right heights.** The game's editor stores the height of each POI differently from the world generator. The map editor read these heights the generator's way. So after a save in the game's editor, Review listed hundreds of POIs that "don't meet the road", on a map that nobody changed. A POI that you moved in such a world could also be buried in the game. This version fixes both problems. Navezgane and the Pregen maps use the same format, so the editor now reads them correctly too. The editor saves each prefab back in the format that it read.
+- **Fewer road warnings.** Review now flags a POI or street tile only in one case. The road beside it is more than 1 m (one block) higher or lower than its ground. The world generator leaves many one-block steps, and players and vehicles can cross them. The same limit applies when you place a prefab.
 
-Projects saved by this version can't be opened by v1.2.0 or earlier.
+Projects that this version saves do not open in v1.2.0 or earlier.
 
 ## v1.2.0 (2026-10-24)
 
 ### New
 
-- **Generated biome layouts.** New World can lay out all the biomes the way the game's world generator does, instead of painting one biome over the whole map. Choose where they start (forest or wasteland in the middle, a ring, two rings, or a line) and set each biome's share of the map. The same seed gives the same layout.
-- **Placed list.** A **Placed** tab in the side panel lists every POI, street tile and part in your world. Search by name, filter by type, and double-click a row (or press Enter) to jump to that prefab and select it.
-- **Favourite prefabs.** Click the ☆ beside a prefab in the browser, or on its info card. **Favourites** in the category list shows them, and they stay across worlds, projects and updates.
-- **Replace from the browser.** With a prefab selected on the map, picking a different one in the browser shows it on the info card as the replacement. Press **Replace** to swap it in, or **Back** (Esc) to return.
-- **Tier badge** on the info card.
-- **Compact ribbon.** On short windows the ribbon becomes one row of icons. **View > Ribbon** keeps it full or compact.
+- **Generated biome layouts.** New World can arrange all the biomes the way the game's world generator does. You do not have to paint one biome over the whole map. Choose where the biomes start: forest or wasteland in the middle, a ring, two rings, or a line. Set the share of the map for each biome. The same seed gives the same layout.
+- **Placed list.** A **Placed** tab in the side panel lists every POI, street tile and part in your world. Search by name and filter by type. To go to a prefab and select it, double-click its row or press Enter.
+- **Favourite prefabs.** Click the ☆ beside a prefab in the browser or on its info card. **Favourites** in the category list shows them. Your favourites stay across worlds, projects and updates.
+- **Replace from the browser.** Select a prefab on the map, then pick a different prefab in the browser. The info card shows the new prefab as the replacement. Press **Replace** to use it, or press **Back** (Esc) to keep the old prefab.
+- **Tier badge.** The info card shows the tier of the prefab.
+- **Compact ribbon.** On short windows, the ribbon becomes one row of icons. **View > Ribbon** keeps it full or compact.
 
 ## v1.1.2 (2026-10-20)
 
 ### Fixes
 
-- **Safer saving.** A world folder is written in full before any old file is replaced, and the old files are put back if something fails, so a failed export never leaves a mix of old and new files.
-- Closing the editor waits for a save in progress, and edits are paused while a save runs.
-- An edited layer no longer exports a stale copy of the original image.
-- Biome maps the editor can't repaint are left as they were instead of being painted over, and survive edit-and-undo.
-- Damaged or unusual project files and PNGs are refused with a message instead of crashing the editor.
+- **Safer saving.** The editor writes a world folder in full before it replaces any old file. If something fails, the editor puts the old files back. So a failed export never leaves a mix of old and new files.
+- When you close the editor, it waits for a save in progress to finish. The editor pauses edits while a save runs.
+- Export no longer writes an old copy of the original image for a layer that you edited.
+- If the editor cannot repaint a biome map, it now keeps the map as it was. Before, it painted over the map. The map also stays as it was after an edit and an undo.
+- The editor now refuses damaged or unusual project files and PNGs, and shows a message. Before, it crashed.
 
 ## v1.1.1 (2026-10-20)
 
 ### Fixes
 
-- **No lip where a road meets a prefab.** Drawn roads now level their flat stretches to whole metres, the height prefabs sit at, so a POI, trader or street tile beside the road meets it level. Slopes and roads already drawn are unchanged.
-- **Road warnings.** Placing a prefab where the road beside it is off its ground warns you, and the Issues panel lists any that don't meet their road level.
-- The Flatten tool has a **Whole metres** box (on by default) that rounds the height picked from the map.
+- **No lip where a road meets a prefab.** Drawn roads now level their flat parts to whole metres, the height that prefabs sit at. So a POI, trader or street tile beside the road is level with the road. Slopes do not change. Roads that you drew before do not change.
+- **Road warnings.** If you place a prefab where the road beside it is higher or lower than its ground, the editor warns you. The Issues panel lists each prefab that is not level with its road.
+- The Flatten tool has a **Whole metres** box, which is on by default. The box rounds the height that you pick from the map.
 
 ## v1.1.0 (2026-10-19)
 
 ### New
 
-- **Road snapping.** Click near the end of any road to carry it on with the same surface and width. A segment within 5° of north, south, east or west snaps straight. Hold Alt to draw freely.
+- **Road snapping.** Click near the end of any road to continue it with the same surface and width. A segment within 5° of north, south, east or west snaps straight. Hold Alt to draw freely.
 - **Road presets:** Highway (18 m), Main street, Town street, Residential, Country road (9 m gravel) and Track.
-- **Select tool** (V) replaces Pan. Click a POI, trader, street tile or spawn point to select it, drag to move it, Q/E to turn it, PgUp/PgDn to raise or lower it, Del to remove it. Dragging empty ground pans the map.
-- **Trader tool** (A): pick a trader or press **Random**, then place it like any prefab.
-- **Town edits.** Before building a town, drag the box's edges or corners to resize it in 150 m tiles, and click a link road to turn it off or back on.
-- **Snapping to street tiles.** POIs and traders snap to the edges of nearby street tiles. Drop one over another POI's middle to replace it. Street tiles snap to the grid of a tile nearby, or go where you put them; they can't overlap.
-- **Stamp preview.** The Stamp tool's cursor shows the stamp from above, turned and sized as it will be stamped.
-- **Check for Updates** in the Help menu. Copies from this version on update themselves.
+- **Select tool** (V) replaces Pan. Click a POI, trader, street tile or spawn point to select it. Drag it to move it. Press Q/E to turn it, PgUp/PgDn to raise or lower it, or Del to remove it. Drag empty ground to pan the map.
+- **Trader tool** (A). Pick a trader or press **Random**. Then place it like any prefab.
+- **Town edits.** Before you build a town, you can drag the edges or corners of its box. This changes the size of the town in 150 m tiles. Click a link road to disable it. Click it again to enable it.
+- **Snapping to street tiles.** POIs and traders snap to the edges of nearby street tiles. Drop a POI over the middle of another POI to replace it. Street tiles snap to the grid of a nearby tile, or stay where you put them. Street tiles cannot overlap.
+- **Stamp preview.** The cursor of the Stamp tool shows the stamp from above. The preview has the same angle and size as the stamp that you will apply.
+- **Check for Updates** in the Help menu. Copies from this version onwards update themselves.
 - Message boxes follow the light or dark theme.
 
 ### Changes
 
-- Placing a POI, trader, street tile or town never changes the roads you drew. One placed against a road takes the road's height instead.
+- Placing a POI, trader, street tile or town never changes the roads that you drew. If you place one against a road, it takes the height of the road.
 
 ## v1.0.0 (2026-10-18)
 
 First release.
 
-- **Open and edit** a world the game generated, or create a new one: any size that's a multiple of 512 m, with a land or water border.
-- **Terrain tools:** Raise, Lower, Flatten, Smooth, Roughen, and stamps from the game's own `Data/Stamps`, blended the way the world generator does. Undo and redo.
-- **Paint** biomes in the game's colours, radiation, and water.
-- **Roads:** draw asphalt or gravel roads of any width; the ground under them is graded.
-- **Prefabs:** browse the game's POIs with filters and pictures, then place, turn and move them. The ground under them is flattened and blended. Street tiles, whole towns and spawn points too.
-- **Projects** (`.7dmap`) save everything in about a second. Autosave every 5 minutes, with recovery after a crash.
-- **Validate and export.** Validate (F7) checks for problems such as overlapping or flooded POIs, missing spawns or traders, and prefabs outside the world. Export (Ctrl+E) writes a world folder the game loads directly.
-- A Paint-style window: ribbon, palette, brush sliders, status bar, and light and dark themes.
+- **Open and edit** a world that the game generated, or create a new world. The size can be any multiple of 512 m, with a land or water border.
+- **Terrain tools:** Raise, Lower, Flatten, Smooth, Roughen, and stamps from the game's own `Data/Stamps`. The editor blends stamps the way the world generator does. Undo and redo.
+- **Paint** biomes (in the game's colours), radiation and water.
+- **Roads:** draw asphalt or gravel roads of any width. The editor grades the ground under them.
+- **Prefabs:** browse the game's POIs with filters and pictures. Then place, turn and move them. The editor flattens and blends the ground under them. You can also place street tiles, whole towns and spawn points.
+- **Projects** (`.7dmap`) save everything in about a second. The editor autosaves every 5 minutes and offers to recover your work after a crash.
+- **Validate and export.** Validate (F7) finds problems such as overlapping or flooded POIs, missing spawns or traders, and prefabs outside the world. Export (Ctrl+E) writes a world folder that the game loads directly.
+- A Paint-style window with a ribbon, palette, brush sliders, status bar, and light and dark themes.
