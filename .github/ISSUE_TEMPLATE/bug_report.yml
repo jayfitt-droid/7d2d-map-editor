@@ -1,0 +1,73 @@
+name: Bug report
+description: Something in the editor doesn't work, or a world doesn't load right in the game.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. One problem per report, please.
+  - type: input
+    id: version
+    attributes:
+      label: Editor version
+      description: Shown in **Help > About**.
+      placeholder: 2.0.0-beta.4
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game version
+      placeholder: V 3.4.0
+  - type: dropdown
+    id: size
+    attributes:
+      label: World size
+      options:
+        - Not about a world
+        - 2048
+        - 4096
+        - 6144
+        - 8192
+        - 10240
+        - 16384
+        - Other
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where it happens
+      options:
+        - In the editor
+        - In the game, on a world the editor saved or exported
+        - Installing or updating
+    validations:
+      required: true
+  - type: input
+    id: tool
+    attributes:
+      label: Tool or stage
+      description: The tool, or the Generate stage (1-6), that you used.
+      placeholder: Stage 4 (Highways)
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to make it happen
+      placeholder: |
+        1. New World, 8192, Archipelago
+        2. Run stages 1 to 4
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Screenshots, crash.log, project
+      description: |
+        If the editor crashed, attach `crash.log` from `%APPDATA%\7D2DMapEditor`.
+        Drag files into this box. Zip a `.7dmap` project if the problem needs it.
