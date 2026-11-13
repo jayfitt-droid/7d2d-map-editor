@@ -1,4 +1,4 @@
-# 7D2D Map Editor: User Manual
+# Gnostic - 7D2D Map Editor: User Manual
 
 This manual is for version 2.0.0. It tells you how to make and change worlds for 7 Days to Die.
 
@@ -45,8 +45,8 @@ You need:
 
 Download the editor from the [releases page](https://github.com/jayfitt-droid/7d2d-map-editor/releases). Use one of these files:
 
-- `7D2DMapEditor-win-Setup.exe` installs the editor for your Windows user. It does not need administrator rights.
-- `7D2DMapEditor-win-Portable.zip` does not install. Unzip it and run `MapEditor.exe`.
+- `Gnostic-7D2DMapEditor-win-Setup.exe` installs the editor for your Windows user. It does not need administrator rights.
+- `Gnostic-7D2DMapEditor-win-Portable.zip` does not install. Unzip it and run `Gnostic - 7D2D Map Editor.exe`.
 
 Windows SmartScreen can show "Windows protected your PC". The editor is not signed. Click **More info**, then click **Run anyway**.
 
