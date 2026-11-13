@@ -1,6 +1,34 @@
 # Changelog
 
-What changed in each release of 7D2D Map Editor, newest first. Downloads are on the [releases page](https://github.com/jayfitt-droid/7d2d-map-editor/releases). Installed copies update from **Help > Check for Updates**.
+What changed in each release of Gnostic - 7D2D Map Editor, newest first. Downloads are on the [releases page](https://github.com/jayfitt-droid/7d2d-map-editor/releases). Installed copies update from **Help > Check for Updates**.
+
+## v2.0.0 (2026-11-13)
+
+The editor has a new name: **Gnostic - 7D2D Map Editor**. Copies of v1.2.1 and of the betas update to this version from **Help > Check for Updates**. They keep your settings, and the Start menu and desktop shortcuts get the new name.
+
+This version contains all the changes in v2.0.0-beta.1, beta.3 and beta.4 below. The most important changes since v1.2.1 are:
+
+- **Generate panel.** Make a complete world in six stages: terrain, town sites, features, highways, wilderness and spawns. Run a stage again with a new seed, and the other stages stay as they are.
+- **Land shapes.** A new world can be one island, several islands or a peninsula. Stage 4 (Highways) can connect the islands with bridges.
+- **Presets.** Eight built-in presets change the game's numbers for your world size. You can also save your own presets.
+- **Your own prefabs.** The editor loads the prefabs in `%APPDATA%\7DaysToDie\LocalPrefabs`.
+- **Export writes every prefab at ground level**, in the format that the game's own editor writes.
+
+### Fixes
+
+- Some bridges from stage 4 (Highways) had a step in the road at one end. The step was up to 3 m high. The editor now builds a bridge only where the road can go up or down to the ground at each end of the bridge. ([#9](https://github.com/jayfitt-droid/7d2d-map-editor/issues/9))
+- Setup said "already installed" after you used the portable editor. The portable editor kept its POI pictures in the folder that Setup installs to. The editor now keeps the pictures in `%LOCALAPPDATA%\7D2DMapEditor-Cache` and removes the old folder. ([#11](https://github.com/jayfitt-droid/7d2d-map-editor/issues/11))
+- **Help > About** showed version 1.0.0. It now shows the full version, for example 2.0.0. ([#7](https://github.com/jayfitt-droid/7d2d-map-editor/issues/7))
+
+### Changes
+
+- The program file is now `Gnostic.exe`. The downloads are `Gnostic-7D2DMapEditor-win-Setup.exe` and `Gnostic-7D2DMapEditor-win-Portable.zip`.
+- In stage 6 (Spawns), the card tells you that **At least** is a minimum. Gravel roads from stage 5 (Wilderness) add spawn points first, with no limit, as in the game. A note shows when stage 5 has not put roads on the map. ([#6](https://github.com/jayfitt-droid/7d2d-map-editor/issues/6))
+
+### Known issues
+
+- Bridges from stage 4 (Highways) leave a gap in the ground along the deck, across each end of the deck and around each bridge post. The gaps are cosmetic: vehicles and boats can use the bridges. ([#5](https://github.com/jayfitt-droid/7d2d-map-editor/issues/5))
+- Windows SmartScreen can show "Windows protected your PC" when you start the editor. The editor is not signed. Click **More info**, then **Run anyway**.
 
 ## v2.0.0-beta.4 (2026-11-13)
 
