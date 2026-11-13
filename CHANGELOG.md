@@ -2,6 +2,17 @@
 
 What changed in each release of 7D2D Map Editor, newest first. Downloads are on the [releases page](https://github.com/jayfitt-droid/7d2d-map-editor/releases). Installed copies update from **Help > Check for Updates**.
 
+## v2.0.0-beta.4 (2026-11-13)
+
+### Fixes
+
+- In stage 1 (Terrain), **Plan the biomes again for this land** stays ticked when you run the stage again. Before, each run cleared the tick, and the next run kept the old biome layout. Only you can clear the tick. When you open a world, the tick shows if its biome layout does not fit its land. ([#2](https://github.com/jayfitt-droid/7d2d-map-editor/issues/2))
+- The map shows a plain sea floor under water. Before, the map showed the biome colours under the sea, so the sea between islands had blocky patches of colour.
+
+### Changes
+
+- Tests now open projects from each earlier release, so an update cannot stop your saved projects from opening.
+
 ## v2.0.0-beta.3 (2026-11-11)
 
 ### New
