@@ -16,6 +16,7 @@ What changed in each release of 7D2D Map Editor, newest first. Downloads are on 
 ### Known issues
 
 - Bridges from stage 4 (Highways) leave a gap in the ground along the deck, across each end of the deck and around each bridge post. The gaps are cosmetic: vehicles and boats can use the bridges. ([#5](https://github.com/jayfitt-droid/7d2d-map-editor/issues/5))
+- Windows SmartScreen can show "Windows protected your PC" when you start the editor. The editor is not signed. Click **More info**, then **Run anyway**.
 
 ## v2.0.0-beta.3 (2026-11-11)
 
