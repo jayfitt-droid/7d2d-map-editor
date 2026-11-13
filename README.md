@@ -86,3 +86,7 @@ A 7D2D world is a folder of files the game reads on first load. The editor write
 ## Feedback
 
 Found a bug or have an idea? Open an [issue](https://github.com/jayfitt-droid/7d2d-map-editor/issues).
+
+## Support my work
+
+The editor is free, and I build it in my spare time. If it saves you time or helps you make a world you like, you can buy me a coffee on [Ko-fi](https://ko-fi.com/jayfitt). Thank you!
