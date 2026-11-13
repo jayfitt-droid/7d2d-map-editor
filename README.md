@@ -1,4 +1,4 @@
-# 7D2D Map Editor
+# Gnostic - 7D2D Map Editor
 
 A Windows editor for 7 Days to Die worlds. You can open a world the game generated and change it, or build a new one from scratch. The editor writes a world folder the game loads directly, with no mod needed: `dtm.raw`, `biomes.png`, `splat3.png`, `splat4.png`, `radiation.png`, `prefabs.xml`, `spawnpoints.xml`, `map_info.xml` and `main.ttw`.
 
@@ -6,7 +6,7 @@ Game assets (stamps, prefabs, biome colours, `rwgmixer.xml`) are read from your 
 
 ## Install
 
-Download `7D2DMapEditor-win-Setup.exe` from the [latest release](https://github.com/jayfitt-droid/7d2d-map-editor/releases/latest) and run it. It installs for your Windows user only, so it needs no administrator rights, and adds Start menu and desktop shortcuts. To run without installing, unzip `7D2DMapEditor-win-Portable.zip` instead. Installed copies can update themselves from **Help > Check for Updates**.
+Download `Gnostic-7D2DMapEditor-win-Setup.exe` from the [latest release](https://github.com/jayfitt-droid/7d2d-map-editor/releases/latest) and run it. It installs for your Windows user only, so it needs no administrator rights, and adds Start menu and desktop shortcuts. To run without installing, unzip `Gnostic-7D2DMapEditor-win-Portable.zip` instead. Installed copies can update themselves from **Help > Check for Updates**.
 
 It needs Windows 10 or 11 (64-bit) and a copy of 7 Days to Die (v3.x).
 
