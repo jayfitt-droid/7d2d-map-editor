@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or discussion
+    url: https://github.com/jayfitt-droid/7d2d-map-editor/discussions
+    about: Ask how to do something, or share a world.
+  - name: User manual
+    url: https://github.com/jayfitt-droid/7d2d-map-editor/blob/main/docs/USER-MANUAL.md
+    about: Every tool and stage, with example workflows.
